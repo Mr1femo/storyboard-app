@@ -51,8 +51,11 @@ function handleRequest(e, method) {
         case 'health':
           result = { status: 'ok', timestamp: new Date().toISOString() };
           break;
+        case 'testdrive':
+          result = testDriveAccessWeb();
+          break;
         default:
-          throw new Error('Invalid action. Use: calendar, storyboard, health');
+          throw new Error('Invalid action. Use: calendar, storyboard, health, testDrive');
       }
     } else if (method === 'POST') {
       const payload = parseJsonBody(e);
@@ -295,65 +298,145 @@ function authorizeAll() {
   initializeDatabase();
   testDriveAccess();
   Logger.log('Authorization complete. You can now deploy the web app.');
+  Logger.log('After deploying, open your web app URL with ?action=testDrive in the browser while logged into your Google account.');
 }
 
 function testDriveAccess() {
-  const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-  const name = folder.getName();
-  const testBlob = Utilities.newBlob('test', 'text/plain', 'auth_test.txt');
-  const testFile = folder.createFile(testBlob);
-  testFile.setTrashed(true);
-  Logger.log('Drive access OK. Folder: ' + name);
+  const blob = Utilities.newBlob('auth-test', 'text/plain', 'auth_test.txt');
+  const uploaded = uploadImageToDriveApi(blob, 'auth_test');
+  trashDriveFile(uploaded.fileId);
+  Logger.log('Drive access OK. Folder ID: ' + CONFIG.DRIVE_FOLDER_ID);
 }
 
-// ─── Image Upload ────────────────────────────────────────────────────────────
+/** Call via browser after deploy: YOUR_URL?action=testDrive */
+function testDriveAccessWeb() {
+  const blob = Utilities.newBlob('web-auth-test', 'text/plain', 'web_auth_test.txt');
+  const uploaded = uploadImageToDriveApi(blob, 'web_auth_test');
+  trashDriveFile(uploaded.fileId);
+  return {
+    status: 'ok',
+    message: 'Web app Drive access is working. Image uploads should work now.',
+    folderId: CONFIG.DRIVE_FOLDER_ID,
+  };
+}
+
+// ─── Image Upload (Drive REST API — works in web app deployments) ────────────
 
 function saveBase64ImageToDrive(base64String, fileName) {
   try {
-    const match = base64String.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
-    let mimeType = 'image/jpeg';
-    let base64Data = base64String;
-
-    if (match) {
-      mimeType = match[1];
-      base64Data = match[2];
-    } else if (base64String.indexOf(',') !== -1) {
-      const parts = base64String.split(',');
-      base64Data = parts[1];
-      const mimeMatch = parts[0].match(/:(.*?);/);
-      if (mimeMatch) mimeType = mimeMatch[1];
-    }
-
-    const extension = (mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-    const blob = Utilities.newBlob(
-      Utilities.base64Decode(base64Data),
-      mimeType,
-      fileName + '.' + extension
-    );
-
-    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-    const file = folder.createFile(blob);
-
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-    const fileId = file.getId();
-    return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
+    const blob = base64ToBlob(base64String, fileName);
+    const uploaded = uploadImageToDriveApi(blob, fileName);
+    return uploaded.imageUrl;
   } catch (error) {
     const msg = error.message || String(error);
-    if (msg.indexOf('DriveApp') !== -1 || msg.indexOf('access') !== -1) {
+    if (msg.indexOf('403') !== -1 || msg.indexOf('401') !== -1 || msg.indexOf('access') !== -1) {
       throw new Error(
-        'Google Drive access denied. Open Apps Script editor, run authorizeAll(), ' +
-        'approve Drive permissions, then redeploy the web app as a new version.'
-      );
-    }
-    if (msg.indexOf('not found') !== -1) {
-      throw new Error(
-        'Drive folder not found. Check CONFIG.DRIVE_FOLDER_ID and ensure your Google ' +
-        'account owns or can edit that folder.'
+        'Google Drive access denied for web app. Steps: (1) Run authorizeAll() in editor. ' +
+        '(2) Deploy → New version. (3) Open YOUR_DEPLOYMENT_URL?action=testDrive in browser ' +
+        'while logged into your Google account and approve permissions.'
       );
     }
     throw new Error('Image upload failed: ' + msg);
   }
+}
+
+function base64ToBlob(base64String, fileName) {
+  const match = base64String.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+  let mimeType = 'image/jpeg';
+  let base64Data = base64String;
+
+  if (match) {
+    mimeType = match[1];
+    base64Data = match[2];
+  } else if (base64String.indexOf(',') !== -1) {
+    const parts = base64String.split(',');
+    base64Data = parts[1];
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    if (mimeMatch) mimeType = mimeMatch[1];
+  }
+
+  const extension = (mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+  return Utilities.newBlob(
+    Utilities.base64Decode(base64Data),
+    mimeType,
+    fileName + '.' + extension
+  );
+}
+
+function uploadImageToDriveApi(blob, baseName) {
+  const folderId = CONFIG.DRIVE_FOLDER_ID;
+  const metadata = {
+    name: blob.getName() || baseName,
+    parents: [folderId],
+  };
+
+  const boundary = 'wwwwboundary' + Utilities.getUuid();
+  const dashBoundary = '--' + boundary;
+  const closeDelimiter = dashBoundary + '--';
+
+  const body = [
+    dashBoundary,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify(metadata),
+    dashBoundary,
+    'Content-Type: ' + blob.getContentType(),
+    'Content-Transfer-Encoding: base64',
+    '',
+    Utilities.base64Encode(blob.getBytes()),
+    closeDelimiter,
+  ].join('\r\n');
+
+  const token = ScriptApp.getOAuthToken();
+  const uploadResponse = UrlFetchApp.fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    {
+      method: 'post',
+      contentType: 'multipart/related; boundary=' + boundary,
+      payload: body,
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+    }
+  );
+
+  const uploadCode = uploadResponse.getResponseCode();
+  const uploadText = uploadResponse.getContentText();
+
+  if (uploadCode !== 200) {
+    throw new Error('Drive API upload failed (' + uploadCode + '): ' + uploadText);
+  }
+
+  const fileId = JSON.parse(uploadText).id;
+
+  UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + fileId + '/permissions',
+    {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ role: 'reader', type: 'anyone' }),
+      muteHttpExceptions: true,
+    }
+  );
+
+  return {
+    fileId: fileId,
+    imageUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000',
+  };
+}
+
+function trashDriveFile(fileId) {
+  const token = ScriptApp.getOAuthToken();
+  UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + fileId,
+    {
+      method: 'patch',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ trashed: true }),
+      muteHttpExceptions: true,
+    }
+  );
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
