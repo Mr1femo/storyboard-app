@@ -1,11 +1,21 @@
-const API_URL = import.meta.env.VITE_API_URL || '';
-
 /**
- * Google Apps Script requires POST via redirect workaround for CORS.
- * We use mode: 'no-cors' fallback with GET for reads, and form POST for writes.
+ * API routing:
+ * - localhost  → direct Google Apps Script (text/plain POST avoids preflight)
+ * - production → same-origin /api/gas proxy (no CORS)
  */
+function getApiBase() {
+  const host = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  if (!isLocal) return '/api/gas';
+  return import.meta.env.VITE_API_URL || '';
+}
+
 async function apiGet(action, params = {}) {
-  const url = new URL(API_URL);
+  const base = getApiBase();
+  const url = base.startsWith('http')
+    ? new URL(base)
+    : new URL(base, window.location.origin);
+
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([key, value]) => {
     if (value != null) url.searchParams.set(key, value);
@@ -21,12 +31,16 @@ async function apiGet(action, params = {}) {
 }
 
 async function apiPost(action, body) {
-  const url = new URL(API_URL);
+  const base = getApiBase();
+  const url = base.startsWith('http')
+    ? new URL(base)
+    : new URL(base, window.location.origin);
+
   url.searchParams.set('action', action);
 
   const response = await fetch(url.toString(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body),
     redirect: 'follow',
   });
