@@ -35,12 +35,23 @@ function handleRequest(e, method) {
     const action = (e.parameter.action || '').toLowerCase();
     const contentId = e.parameter.contentId || '';
     const clientId = e.parameter.clientId || '';
-    const token = e.parameter.token || '';
+    const publicActions = { login: true, health: true, testdrive: true };
 
     let result;
     let auth = null;
+    let payload = null;
 
-    if (action !== 'login' && action !== 'health' && action !== 'testdrive') {
+    // POST: read body first so token can come from JSON body
+    if (method === 'POST') {
+      payload = parseJsonBody(e);
+    }
+
+    const token =
+      (e.parameter && e.parameter.token) ||
+      (payload && payload.token) ||
+      '';
+
+    if (!publicActions[action]) {
       auth = validateAuthToken(token);
     }
 
@@ -70,12 +81,6 @@ function handleRequest(e, method) {
           throw new Error('Invalid action');
       }
     } else if (method === 'POST') {
-      const payload = parseJsonBody(e);
-      const bodyToken = payload.token || token;
-      if (action !== 'login' && !auth) {
-        auth = validateAuthToken(bodyToken);
-      }
-
       switch (action) {
         case 'login':
           result = login(payload);

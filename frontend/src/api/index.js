@@ -37,13 +37,19 @@ async function apiGet(action, params = {}) {
 
 async function apiPost(action, body, options = {}) {
   const useDirectGas =
-    GAS_DIRECT_URL && options.direct || (action === 'create' && hasImages(body));
+    (GAS_DIRECT_URL && options.direct) || (action === 'create' && hasImages(body));
 
   const base = useDirectGas ? GAS_DIRECT_URL : getProxyBase();
   const url = resolveUrl(base);
   url.searchParams.set('action', action);
 
-  const payload = { ...body, token: authToken.value || body.token };
+  // Send token in query AND body so proxy + GAS both receive it
+  const sessionToken = authToken.value || body.token || '';
+  if (sessionToken) {
+    url.searchParams.set('token', sessionToken);
+  }
+
+  const payload = { ...body, token: sessionToken };
 
   const response = await fetch(url.toString(), {
     method: 'POST',
