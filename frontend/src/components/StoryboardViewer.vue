@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { api } from '../api';
+import { getDriveImageUrl } from '../utils/driveImage';
 
 const props = defineProps({
   contentId: { type: String, required: true },
@@ -78,6 +79,18 @@ const statusBadge = computed(() => {
 });
 
 onMounted(loadStoryboard);
+
+function frameImageSrc(url) {
+  return getDriveImageUrl(url);
+}
+
+function onImageError(event, frame) {
+  const src = event.target.src;
+  const idMatch = frame.imageUrl?.match(/[?&]id=([^&]+)/) || frame.imageUrl?.match(/\/d\/([^/]+)/);
+  if (idMatch && !src.includes('uc?export=view')) {
+    event.target.src = `https://drive.google.com/uc?export=view&id=${idMatch[1]}`;
+  }
+}
 </script>
 
 <template>
@@ -145,7 +158,16 @@ onMounted(loadStoryboard);
           </div>
 
           <!-- Storyboard Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 border-b border-gray-200">
+          <div
+            v-if="storyboard.frames.length === 0"
+            class="bg-white border-b border-gray-200 px-6 py-16 text-center"
+          >
+            <p class="text-gray-500 text-sm">No storyboard frames found for this content.</p>
+          </div>
+          <div
+            v-else
+            class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 border-b border-gray-200"
+          >
             <div
               v-for="frame in storyboard.frames"
               :key="frame.frameId || frame.frameNumber"
@@ -169,10 +191,12 @@ onMounted(loadStoryboard);
               <div class="aspect-[4/3] border-b border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
                 <img
                   v-if="frame.imageUrl"
-                  :src="frame.imageUrl"
+                  :src="frameImageSrc(frame.imageUrl)"
                   :alt="frame.sceneTitle"
                   class="w-full h-full object-cover"
                   loading="lazy"
+                  referrerpolicy="no-referrer"
+                  @error="onImageError($event, frame)"
                 />
                 <div v-else class="text-gray-300 text-center p-4">
                   <svg class="w-12 h-12 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

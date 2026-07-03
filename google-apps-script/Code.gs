@@ -139,7 +139,7 @@ function getStoryboardDetails(contentId) {
   }
 
   const framesSheet = getSheet(CONFIG.SHEETS.STORYBOARD_FRAMES);
-  const allFrames = sheetToObjects(framesSheet);
+  const allFrames = sheetToObjects(framesSheet, 'frameId');
   const frames = allFrames
     .filter(function (f) { return String(f.contentId) === String(contentId); })
     .sort(function (a, b) { return Number(a.frameNumber) - Number(b.frameNumber); })
@@ -155,7 +155,7 @@ function getStoryboardDetails(contentId) {
     });
 
   const footerSheet = getSheet(CONFIG.SHEETS.STORYBOARD_FOOTER);
-  const allFooters = sheetToObjects(footerSheet);
+  const allFooters = sheetToObjects(footerSheet, 'contentId');
   const footerRow = allFooters.find(function (f) { return String(f.contentId) === String(contentId); });
 
   const footer = footerRow
@@ -313,7 +313,8 @@ function saveBase64ImageToDrive(base64String, fileName) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   const fileId = file.getId();
-  return 'https://drive.google.com/uc?export=view&id=' + fileId;
+  // Thumbnail URL works reliably in external <img> tags
+  return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -339,11 +340,12 @@ function getSheet(name) {
   return sheet;
 }
 
-function sheetToObjects(sheet) {
+function sheetToObjects(sheet, idKey) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
 
   const headers = data[0];
+  const key = idKey || 'id';
   const rows = [];
 
   for (let i = 1; i < data.length; i++) {
@@ -355,7 +357,7 @@ function sheetToObjects(sheet) {
         hasData = true;
       }
     }
-    if (hasData && obj.id) rows.push(obj);
+    if (hasData && obj[key]) rows.push(obj);
   }
   return rows;
 }
