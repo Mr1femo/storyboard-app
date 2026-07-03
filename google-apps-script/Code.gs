@@ -5,9 +5,11 @@
  * SETUP:
  * 1. Create a new Google Spreadsheet and copy its ID into CONFIG.SPREADSHEET_ID
  * 2. Create a Google Drive folder for storyboard images and copy its ID into CONFIG.DRIVE_FOLDER_ID
- * 3. Run initializeDatabase() once from the Apps Script editor
- * 4. Deploy as Web App: Execute as "Me", Access "Anyone"
- * 5. Copy the deployment URL into the frontend .env file
+ * 3. Add appsscript.json (OAuth scopes) — copy from repo or paste oauthScopes in Project Settings
+ * 4. Run authorizeAll() once from the editor and approve ALL permissions (especially Drive)
+ * 5. Run initializeDatabase() once from the editor
+ * 6. Deploy as Web App: Execute as "Me", Access "Anyone" — create NEW version after any change
+ * 7. Copy the deployment URL into the frontend .env / Vercel env vars
  */
 
 const CONFIG = {
@@ -283,38 +285,75 @@ function updateContentStatus(payload) {
   return { contentId: payload.contentId, status: payload.status };
 }
 
+// ─── One-Time Authorization (run from editor) ────────────────────────────────
+
+/**
+ * Run this ONCE from the Apps Script editor before deploying.
+ * Click Run → authorizeAll → Review permissions → Allow all access.
+ */
+function authorizeAll() {
+  initializeDatabase();
+  testDriveAccess();
+  Logger.log('Authorization complete. You can now deploy the web app.');
+}
+
+function testDriveAccess() {
+  const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  const name = folder.getName();
+  const testBlob = Utilities.newBlob('test', 'text/plain', 'auth_test.txt');
+  const testFile = folder.createFile(testBlob);
+  testFile.setTrashed(true);
+  Logger.log('Drive access OK. Folder: ' + name);
+}
+
 // ─── Image Upload ────────────────────────────────────────────────────────────
 
 function saveBase64ImageToDrive(base64String, fileName) {
-  const match = base64String.match(/^data:(image\/\w+);base64,(.+)$/);
-  let mimeType = 'image/png';
-  let base64Data = base64String;
+  try {
+    const match = base64String.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+    let mimeType = 'image/jpeg';
+    let base64Data = base64String;
 
-  if (match) {
-    mimeType = match[1];
-    base64Data = match[2];
-  } else if (base64String.indexOf(',') !== -1) {
-    const parts = base64String.split(',');
-    base64Data = parts[1];
-    const mimeMatch = parts[0].match(/:(.*?);/);
-    if (mimeMatch) mimeType = mimeMatch[1];
+    if (match) {
+      mimeType = match[1];
+      base64Data = match[2];
+    } else if (base64String.indexOf(',') !== -1) {
+      const parts = base64String.split(',');
+      base64Data = parts[1];
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      if (mimeMatch) mimeType = mimeMatch[1];
+    }
+
+    const extension = (mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(base64Data),
+      mimeType,
+      fileName + '.' + extension
+    );
+
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const file = folder.createFile(blob);
+
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const fileId = file.getId();
+    return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
+  } catch (error) {
+    const msg = error.message || String(error);
+    if (msg.indexOf('DriveApp') !== -1 || msg.indexOf('access') !== -1) {
+      throw new Error(
+        'Google Drive access denied. Open Apps Script editor, run authorizeAll(), ' +
+        'approve Drive permissions, then redeploy the web app as a new version.'
+      );
+    }
+    if (msg.indexOf('not found') !== -1) {
+      throw new Error(
+        'Drive folder not found. Check CONFIG.DRIVE_FOLDER_ID and ensure your Google ' +
+        'account owns or can edit that folder.'
+      );
+    }
+    throw new Error('Image upload failed: ' + msg);
   }
-
-  const extension = mimeType.split('/')[1] || 'png';
-  const blob = Utilities.newBlob(
-    Utilities.base64Decode(base64Data),
-    mimeType,
-    fileName + '.' + extension
-  );
-
-  const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-  const file = folder.createFile(blob);
-
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-  const fileId = file.getId();
-  // Thumbnail URL works reliably in external <img> tags
-  return 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1000';
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
