@@ -6,6 +6,7 @@ import { compressImage } from '../utils/imageCompress';
 const props = defineProps({
   initialDate: { type: String, default: null },
   contentId: { type: String, default: null },
+  clients: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['close', 'saved']);
@@ -26,6 +27,7 @@ const platforms = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'Lin
 const contentTypes = ['Reel', 'Short', 'Ad', 'Post', 'Story', 'Carousel', 'Live'];
 
 const form = reactive({
+  clientId: props.clients[0]?.clientId || '',
   date: props.initialDate || new Date().toISOString().slice(0, 10),
   platform: 'Instagram',
   contentType: 'Reel',
@@ -95,12 +97,12 @@ function removeListItem(field, index) {
 }
 
 const isValid = computed(() => {
-  return form.date && form.platform && form.contentType;
+  return form.clientId && form.date && form.platform && form.contentType;
 });
 
 async function handleSubmit() {
   if (!isValid.value) {
-    error.value = 'Please fill in required fields (Date, Platform, Content Type)';
+    error.value = 'Please fill in required fields (Client, Date, Platform, Content Type)';
     activeTab.value = 0;
     return;
   }
@@ -110,6 +112,7 @@ async function handleSubmit() {
 
   try {
     const payload = {
+      clientId: form.clientId,
       date: form.date,
       platform: form.platform,
       contentType: form.contentType,
@@ -174,13 +177,13 @@ if (form.frames.length === 0) addFrame();
             @click="activeTab = index"
             class="flex-shrink-0 px-5 py-3 text-sm font-medium border-b-2 transition-colors"
             :class="activeTab === index
-              ? 'border-indigo-600 text-indigo-600'
+              ? 'border-brand text-brand'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
           >
             <span class="flex items-center gap-2">
               <span
                 class="w-5 h-5 rounded-full text-xs flex items-center justify-center"
-                :class="activeTab === index ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600'"
+                :class="activeTab === index ? 'bg-brand text-white' : 'bg-gray-200 text-gray-600'"
               >
                 {{ index + 1 }}
               </span>
@@ -193,20 +196,27 @@ if (form.frames.length === 0) addFrame();
         <div class="px-6 py-6 max-h-[60vh] overflow-y-auto scrollbar-thin">
           <!-- Tab 1: Basic Info -->
           <div v-show="activeTab === 0" class="space-y-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Client *</label>
+              <select v-model="form.clientId" class="input-field">
+                <option v-for="c in clients" :key="c.clientId" :value="c.clientId">{{ c.clientName }}</option>
+              </select>
+              <p v-if="!clients.length" class="text-xs text-red-500 mt-1">Create a client account first</p>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                 <input
                   v-model="form.date"
                   type="date"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand transition-shadow"
                 />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Platform *</label>
                 <select
                   v-model="form.platform"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
                 >
                   <option v-for="p in platforms" :key="p" :value="p">{{ p }}</option>
                 </select>
@@ -215,7 +225,7 @@ if (form.frames.length === 0) addFrame();
                 <label class="block text-sm font-medium text-gray-700 mb-1">Content Type *</label>
                 <select
                   v-model="form.contentType"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
                 >
                   <option v-for="t in contentTypes" :key="t" :value="t">{{ t }}</option>
                 </select>
@@ -226,7 +236,7 @@ if (form.frames.length === 0) addFrame();
               <textarea
                 v-model="form.caption"
                 rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
                 placeholder="Social media caption..."
               />
             </div>
@@ -235,7 +245,7 @@ if (form.frames.length === 0) addFrame();
               <textarea
                 v-model="form.script"
                 rows="4"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
                 placeholder="Full script or talking points..."
               />
             </div>
@@ -249,7 +259,7 @@ if (form.frames.length === 0) addFrame();
                 <input
                   v-model="form.duration"
                   type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
                   placeholder="e.g. 60 sec"
                 />
               </div>
@@ -258,7 +268,7 @@ if (form.frames.length === 0) addFrame();
                 <input
                   v-model="form.castPeople"
                   type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
                   placeholder="e.g. Host, Guest"
                 />
               </div>
@@ -267,7 +277,7 @@ if (form.frames.length === 0) addFrame();
                 <input
                   v-model="form.mood"
                   type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
                   placeholder="e.g. Energetic, Calm"
                 />
               </div>
@@ -300,7 +310,7 @@ if (form.frames.length === 0) addFrame();
                   <input
                     v-model="frame.sceneTitle"
                     type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     placeholder="INTRO SHOT"
                   />
                 </div>
@@ -309,7 +319,7 @@ if (form.frames.length === 0) addFrame();
                   <input
                     v-model="frame.lensTechSpecs"
                     type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     placeholder="LENS: 50mm | SHOT: B-Roll"
                   />
                 </div>
@@ -321,7 +331,7 @@ if (form.frames.length === 0) addFrame();
                   v-model="frame.arDescription"
                   rows="2"
                   dir="rtl"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
                   placeholder="وصف المشهد بالعربية..."
                 />
               </div>
@@ -329,7 +339,7 @@ if (form.frames.length === 0) addFrame();
               <div class="mt-3">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Frame Image</label>
                 <div class="flex items-start gap-4">
-                  <label class="flex-1 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-colors">
+                  <label class="flex-1 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand hover:bg-brand-soft transition-colors">
                     <input
                       type="file"
                       accept="image/*"
@@ -354,7 +364,7 @@ if (form.frames.length === 0) addFrame();
 
             <button
               @click="addFrame"
-              class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 transition-colors"
+              class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:border-brand hover:text-brand hover:bg-brand-soft transition-colors"
             >
               + Add New Frame
             </button>
@@ -375,7 +385,7 @@ if (form.frames.length === 0) addFrame();
                   <input
                     v-model="form.footer.editingSequence[index]"
                     type="text"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     placeholder="e.g. Hook, Problem, Solution, CTA"
                   />
                   <button
@@ -391,7 +401,7 @@ if (form.frames.length === 0) addFrame();
               </div>
               <button
                 @click="addListItem('editingSequence')"
-                class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
               >
                 + Add Step
               </button>
@@ -411,7 +421,7 @@ if (form.frames.length === 0) addFrame();
                     v-model="form.footer.bRollNotes[index]"
                     type="text"
                     dir="rtl"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     placeholder="فكرة لقطة إضافية..."
                   />
                   <button
@@ -427,7 +437,7 @@ if (form.frames.length === 0) addFrame();
               </div>
               <button
                 @click="addListItem('bRollNotes')"
-                class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
               >
                 + Add B-Roll Idea
               </button>
@@ -446,7 +456,7 @@ if (form.frames.length === 0) addFrame();
                   <input
                     v-model="form.footer.productionNotes[index]"
                     type="text"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
                     placeholder="e.g. Use natural lighting"
                   />
                   <button
@@ -462,7 +472,7 @@ if (form.frames.length === 0) addFrame();
               </div>
               <button
                 @click="addListItem('productionNotes')"
-                class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
               >
                 + Add Production Note
               </button>
@@ -488,7 +498,7 @@ if (form.frames.length === 0) addFrame();
             <button
               v-if="activeTab < tabs.length - 1"
               @click="activeTab++"
-              class="px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              class="px-4 py-2 text-sm font-medium text-brand hover:bg-brand-soft rounded-lg transition-colors"
             >
               Next
             </button>
@@ -503,7 +513,7 @@ if (form.frames.length === 0) addFrame();
             <button
               @click="handleSubmit"
               :disabled="submitting || compressingImage"
-              class="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              class="px-6 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               {{ submitting ? 'Submitting...' : compressingImage ? 'Processing image...' : 'Submit Content' }}
             </button>

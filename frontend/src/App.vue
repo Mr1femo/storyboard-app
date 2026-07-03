@@ -1,30 +1,51 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useAuth } from './composables/useAuth';
+import { api } from './api';
+import AppNavbar from './components/AppNavbar.vue';
+import LoginView from './views/LoginView.vue';
 import CalendarView from './components/CalendarView.vue';
 import ContentCreatorForm from './components/ContentCreatorForm.vue';
 import StoryboardViewer from './components/StoryboardViewer.vue';
-import { api } from './api';
+import ClientManagement from './components/ClientManagement.vue';
+import ReportGenerator from './components/ReportGenerator.vue';
+import ClientReportsView from './components/ClientReportsView.vue';
 
-const role = computed(() => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('role') === 'client' ? 'client' : 'admin';
-});
+const { user, isAuthenticated, isAdmin, isClient, logout } = useAuth();
+
+const adminTab = ref('calendar');
+const clientTab = ref('calendar');
 
 const calendarItems = ref([]);
-const loading = ref(true);
+const clients = ref([]);
+const loading = ref(false);
 const error = ref(null);
 
 const showCreator = ref(false);
 const showViewer = ref(false);
+const showReportGen = ref(false);
 const selectedDate = ref(null);
 const selectedContentId = ref(null);
-const editingContentId = ref(null);
+const selectedClientFilter = ref('');
+
+const subtitle = computed(() => {
+  if (isAdmin.value) return 'Creator Dashboard';
+  return `Welcome, ${user.value?.clientName || 'Client'}`;
+});
+
+async function loadClients() {
+  if (!isAdmin.value) return;
+  try {
+    clients.value = await api.getClients();
+  } catch { /* non-critical */ }
+}
 
 async function loadCalendar() {
   loading.value = true;
   error.value = null;
   try {
-    calendarItems.value = await api.getCalendar();
+    const filterId = isAdmin.value ? selectedClientFilter.value || undefined : undefined;
+    calendarItems.value = await api.getCalendar(filterId);
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -33,12 +54,9 @@ async function loadCalendar() {
 }
 
 function handleDayClick(date, items) {
-  if (role.value === 'admin') {
-    if (items.length === 0) {
-      selectedDate.value = date;
-      editingContentId.value = null;
-      showCreator.value = true;
-    }
+  if (isAdmin.value && items.length === 0) {
+    selectedDate.value = date;
+    showCreator.value = true;
   }
 }
 
@@ -49,124 +67,131 @@ function handleItemClick(item) {
 
 function handleAddNew() {
   selectedDate.value = new Date().toISOString().slice(0, 10);
-  editingContentId.value = null;
   showCreator.value = true;
 }
 
-function handleCreatorClose() {
-  showCreator.value = false;
-  selectedDate.value = null;
-  editingContentId.value = null;
+function handleLogout() {
+  logout();
 }
 
-function handleCreatorSaved() {
-  showCreator.value = false;
-  selectedDate.value = null;
-  editingContentId.value = null;
-  loadCalendar();
-}
+onMounted(() => {
+  if (isAuthenticated.value) {
+    loadClients();
+    loadCalendar();
+  }
+});
 
-function handleViewerClose() {
-  showViewer.value = false;
-  selectedContentId.value = null;
-}
+watch(isAuthenticated, (val) => {
+  if (val) {
+    loadClients();
+    loadCalendar();
+  }
+});
 
-function handleStatusUpdated() {
-  showViewer.value = false;
-  selectedContentId.value = null;
-  loadCalendar();
-}
-
-onMounted(loadCalendar);
+watch(selectedClientFilter, () => {
+  if (isAdmin.value) loadCalendar();
+});
 </script>
 
 <template>
-  <div class="min-h-screen">
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold text-gray-900 tracking-tight">
-            Content Calendar & Storyboard
-          </h1>
-          <p class="text-sm text-gray-500 mt-0.5">
-            {{ role === 'admin' ? 'Creator Dashboard' : 'Client Review Portal' }}
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span
-            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium"
-            :class="role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'"
-          >
-            {{ role === 'admin' ? 'Admin' : 'Client' }}
-          </span>
+  <LoginView v-if="!isAuthenticated" @success="loadCalendar" />
+
+  <div v-else class="min-h-screen bg-gray-50">
+    <AppNavbar :subtitle="subtitle" @logout="handleLogout">
+      <template #actions>
+        <!-- Admin tabs -->
+        <template v-if="isAdmin">
           <button
-            v-if="role === 'admin'"
-            @click="handleAddNew"
-            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+            v-for="tab in ['calendar', 'clients', 'reports']"
+            :key="tab"
+            @click="adminTab = tab"
+            class="text-sm px-3 py-1.5 rounded-lg capitalize transition-colors"
+            :class="adminTab === tab ? 'bg-brand text-white' : 'text-gray-600 hover:bg-brand-soft'"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Add New
+            {{ tab }}
+          </button>
+          <button v-if="adminTab === 'calendar'" @click="handleAddNew" class="btn-primary text-xs ml-1">+ Add New</button>
+          <button v-if="adminTab === 'reports'" @click="showReportGen = true" class="btn-primary text-xs ml-1">+ Report</button>
+        </template>
+
+        <!-- Client tabs -->
+        <template v-if="isClient">
+          <button
+            @click="clientTab = 'calendar'"
+            class="text-sm px-3 py-1.5 rounded-lg transition-colors"
+            :class="clientTab === 'calendar' ? 'bg-brand text-white' : 'text-gray-600 hover:bg-brand-soft'"
+          >
+            Calendar
           </button>
           <button
-            @click="loadCalendar"
-            class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Refresh"
+            @click="clientTab = 'reports'"
+            class="text-sm px-3 py-1.5 rounded-lg transition-colors"
+            :class="clientTab === 'reports' ? 'bg-brand text-white' : 'text-gray-600 hover:bg-brand-soft'"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            Reports
           </button>
-        </div>
-      </div>
-    </header>
+        </template>
 
-    <!-- Main -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div v-if="loading" class="flex items-center justify-center py-24">
-        <div class="flex flex-col items-center gap-3">
-          <div class="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-          <p class="text-sm text-gray-500">Loading calendar...</p>
-        </div>
-      </div>
-
-      <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-        <p class="text-red-700 font-medium">Failed to load data</p>
-        <p class="text-red-600 text-sm mt-1">{{ error }}</p>
-        <button
-          @click="loadCalendar"
-          class="mt-4 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-        >
-          Retry
+        <button @click="loadCalendar" class="p-2 text-gray-400 hover:text-brand rounded-lg" title="Refresh">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
         </button>
-      </div>
+      </template>
+    </AppNavbar>
 
-      <CalendarView
-        v-else
-        :items="calendarItems"
-        :role="role"
-        @day-click="handleDayClick"
-        @item-click="handleItemClick"
-      />
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Admin: Calendar -->
+      <template v-if="isAdmin && adminTab === 'calendar'">
+        <div v-if="clients.length" class="mb-4 flex items-center gap-3">
+          <label class="text-sm text-gray-600">Filter by client:</label>
+          <select v-model="selectedClientFilter" class="input-field w-auto text-sm">
+            <option value="">All clients</option>
+            <option v-for="c in clients" :key="c.clientId" :value="c.clientId">{{ c.clientName }}</option>
+          </select>
+        </div>
+
+        <div v-if="loading" class="py-24 text-center text-sm text-gray-500">Loading...</div>
+        <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center text-red-700">{{ error }}</div>
+        <CalendarView v-else :items="calendarItems" role="admin" @day-click="handleDayClick" @item-click="handleItemClick" />
+      </template>
+
+      <!-- Admin: Clients -->
+      <ClientManagement v-if="isAdmin && adminTab === 'clients'" />
+
+      <!-- Admin: Reports list -->
+      <ClientReportsView v-if="isAdmin && adminTab === 'reports'" />
+
+      <!-- Client: Calendar -->
+      <template v-if="isClient && clientTab === 'calendar'">
+        <div v-if="loading" class="py-24 text-center text-sm text-gray-500">Loading...</div>
+        <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-xl p-6 text-center text-red-700">{{ error }}</div>
+        <CalendarView v-else :items="calendarItems" role="client" @item-click="handleItemClick" />
+      </template>
+
+      <!-- Client: Reports -->
+      <ClientReportsView v-if="isClient && clientTab === 'reports'" :client-id="user?.clientId" />
     </main>
 
-    <!-- Modals -->
     <ContentCreatorForm
-      v-if="showCreator && role === 'admin'"
+      v-if="showCreator && isAdmin"
       :initial-date="selectedDate"
-      :content-id="editingContentId"
-      @close="handleCreatorClose"
-      @saved="handleCreatorSaved"
+      :clients="clients"
+      @close="showCreator = false"
+      @saved="showCreator = false; loadCalendar()"
     />
 
     <StoryboardViewer
       v-if="showViewer"
       :content-id="selectedContentId"
-      :role="role"
-      @close="handleViewerClose"
-      @status-updated="handleStatusUpdated"
+      @close="showViewer = false; selectedContentId = null"
+      @status-updated="showViewer = false; selectedContentId = null; loadCalendar()"
+    />
+
+    <ReportGenerator
+      v-if="showReportGen"
+      @close="showReportGen = false"
+      @saved="showReportGen = false; adminTab = 'reports'"
     />
   </div>
 </template>

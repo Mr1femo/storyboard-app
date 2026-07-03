@@ -152,7 +152,7 @@ function platformClass(platform) {
         class="min-h-[120px] border-b border-r border-gray-100 p-2 transition-colors"
         :class="{
           'bg-gray-50/50': !day.isCurrentMonth,
-          'hover:bg-indigo-50/30 cursor-pointer': day.isCurrentMonth && role === 'admin',
+          'hover:bg-brand-soft/50 cursor-pointer': day.isCurrentMonth && role === 'admin',
           'hover:bg-gray-50': day.isCurrentMonth && role === 'client',
         }"
         @click="handleDayClick(day)"
@@ -161,7 +161,7 @@ function platformClass(platform) {
           <div class="flex items-center justify-between mb-1.5">
             <span
               class="inline-flex items-center justify-center w-7 h-7 text-sm font-medium rounded-full"
-              :class="isToday(day.date) ? 'bg-indigo-600 text-white' : 'text-gray-700'"
+              :class="isToday(day.date) ? 'bg-brand text-white' : 'text-gray-700'"
             >
               {{ parseInt(day.date.split('-')[2]) }}
             </span>
