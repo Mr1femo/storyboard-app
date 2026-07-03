@@ -5,6 +5,7 @@ import { compressImage } from '../utils/imageCompress';
 
 const props = defineProps({
   initialDate: { type: String, default: null },
+  initialClientId: { type: String, default: '' },
   contentId: { type: String, default: null },
   clients: { type: Array, default: () => [] },
 });
@@ -27,7 +28,7 @@ const platforms = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'Lin
 const contentTypes = ['Reel', 'Short', 'Ad', 'Post', 'Story', 'Carousel', 'Live'];
 
 const form = reactive({
-  clientId: props.clients[0]?.clientId || '',
+  clientId: props.initialClientId || props.clients[0]?.clientId || '',
   date: props.initialDate || new Date().toISOString().slice(0, 10),
   platform: 'Instagram',
   contentType: 'Reel',

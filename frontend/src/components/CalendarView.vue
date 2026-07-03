@@ -37,7 +37,7 @@ const calendarDays = computed(() => {
 
   for (let d = 1; d <= totalDays; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const dayItems = props.items.filter((item) => item.date === dateStr);
+    const dayItems = props.items.filter((item) => String(item.date || '').slice(0, 10) === dateStr);
     days.push({ date: dateStr, items: dayItems, isCurrentMonth: true });
   }
 

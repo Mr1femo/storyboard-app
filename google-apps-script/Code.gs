@@ -147,7 +147,113 @@ function initializeDatabase() {
   ]);
 
   seedDefaultAdmin();
+  repairContentMasterSchema();
   Logger.log('Database initialized successfully.');
+}
+
+/**
+ * Content_Master used to lack clientId. New rows were written in the new column
+ * order while headers stayed old — calendar filter + status updates broke.
+ * This rewrites headers and normalizes existing rows.
+ */
+function repairContentMasterSchema() {
+  const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
+  const expected = [
+    'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
+    'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
+  ];
+
+  const lastCol = Math.max(sheet.getLastColumn(), expected.length);
+  const lastRow = sheet.getLastRow();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+    return String(h || '');
+  });
+
+  const headersOk =
+    headers[0] === 'id' &&
+    headers[1] === 'clientId' &&
+    headers[2] === 'date' &&
+    headers[7] === 'status';
+
+  var data = [];
+  if (lastRow >= 2) {
+    data = sheet.getRange(2, 1, lastRow, lastCol).getValues();
+  }
+
+  data = data.map(function (row) {
+    var r = row.slice();
+    while (r.length < expected.length) r.push('');
+    r = r.slice(0, expected.length);
+
+    var colB = r[1];
+    var colBStr = colB instanceof Date
+      ? Utilities.formatDate(colB, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : String(colB || '');
+    var colG = String(r[6] || '');
+    var colH = String(r[7] || '');
+
+    var isClientId = colBStr.indexOf('CLI_') === 0;
+    var bIsDate = colB instanceof Date || /^\d{4}-\d{2}-\d{2}/.test(colBStr);
+    var statusInH = colH === 'Pending' || colH === 'Approved' || colH === 'Rejected';
+    var statusInG = colG === 'Pending' || colG === 'Approved' || colG === 'Rejected';
+
+    // New writes under old headers: [id, clientId, date, ..., Pending, ...]
+    if (isClientId && statusInH) {
+      return r;
+    }
+
+    // Legacy rows: [id, date, platform, ..., status, feedback, ...]
+    if (bIsDate && statusInG) {
+      return [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]];
+    }
+
+    return r;
+  }).filter(function (r) {
+    return r[0] !== '' && r[0] !== null && r[0] !== undefined;
+  }).map(function (r) {
+    r[2] = formatDateValue(r[2]);
+    if (r[7] !== 'Pending' && r[7] !== 'Approved' && r[7] !== 'Rejected') {
+      r[7] = 'Pending';
+    }
+    return r;
+  });
+
+  // Idempotent: skip rewrite when headers + row shapes already look correct
+  if (headersOk) {
+    var allRowsOk = data.every(function (r) {
+      var b = String(r[1] || '');
+      var status = String(r[7] || '');
+      var dateOk = /^\d{4}-\d{2}-\d{2}$/.test(String(r[2] || ''));
+      var statusOk = status === 'Pending' || status === 'Approved' || status === 'Rejected';
+      var clientOk = b === '' || b.indexOf('CLI_') === 0;
+      return dateOk && statusOk && clientOk;
+    });
+    if (allRowsOk) return;
+  }
+
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow, lastCol).clearContent();
+  }
+
+  sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
+  sheet.getRange(1, 1, 1, expected.length)
+    .setFontWeight('bold')
+    .setBackground('#fef8bc');
+  sheet.setFrozenRows(1);
+
+  if (data.length) {
+    sheet.getRange(2, 1, data.length + 1, expected.length).setValues(data);
+  }
+
+  Logger.log('Content_Master schema repaired. Rows: ' + data.length);
+}
+
+function ensureContentMasterSchema() {
+  try {
+    repairContentMasterSchema();
+  } catch (err) {
+    Logger.log('ensureContentMasterSchema: ' + err.message);
+  }
 }
 
 function seedDefaultAdmin() {
@@ -375,6 +481,7 @@ function getClientFolderId(clientId) {
 // ─── GET Handlers ────────────────────────────────────────────────────────────
 
 function getCalendarData(auth, filterClientId) {
+  ensureContentMasterSchema();
   const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
   let rows = sheetToObjects(sheet);
 
@@ -405,6 +512,7 @@ function mapContentRow(row) {
 }
 
 function getStoryboardDetails(contentId, auth) {
+  ensureContentMasterSchema();
   const contentSheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
   const allContent = sheetToObjects(contentSheet);
   const content = allContent.find(function (c) { return String(c.id) === String(contentId); });
@@ -477,6 +585,7 @@ function createContentWithStoryboard(payload) {
   validateCreatePayload(payload);
   if (!payload.clientId) throw new Error('clientId is required');
 
+  ensureContentMasterSchema();
   const folderId = getClientFolderId(payload.clientId);
   const contentId = generateId('CNT');
   const contentSheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
@@ -484,7 +593,7 @@ function createContentWithStoryboard(payload) {
   contentSheet.appendRow([
     contentId,
     payload.clientId,
-    payload.date,
+    formatDateValue(payload.date),
     payload.platform,
     payload.contentType,
     payload.caption || '',
@@ -535,6 +644,7 @@ function updateContentStatus(payload, auth) {
   if (!payload.contentId) throw new Error('contentId is required');
   if (!payload.status) throw new Error('status is required');
 
+  ensureContentMasterSchema();
   const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
   const allContent = sheetToObjects(sheet);
   const content = allContent.find(function (c) { return String(c.id) === String(payload.contentId); });
@@ -763,11 +873,17 @@ function arrayToCommaList(arr) {
 }
 
 function formatDateValue(value) {
-  if (!value) return '';
-  if (value instanceof Date) {
+  if (value === null || value === undefined || value === '') return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
-  return String(value).substring(0, 10);
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return s.substring(0, 10);
 }
 
 function generateId(prefix) {

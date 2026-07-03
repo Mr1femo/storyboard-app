@@ -176,6 +176,7 @@ watch(selectedClientFilter, () => {
     <ContentCreatorForm
       v-if="showCreator && isAdmin"
       :initial-date="selectedDate"
+      :initial-client-id="selectedClientFilter"
       :clients="clients"
       @close="showCreator = false"
       @saved="showCreator = false; loadCalendar()"

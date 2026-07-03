@@ -10,7 +10,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'status-updated']);
-const { isClient } = useAuth();
+const { isClient, isAdmin } = useAuth();
+const canReview = computed(() => isClient.value || isAdmin.value);
 
 const loading = ref(true);
 const error = ref(null);
@@ -237,7 +238,7 @@ onMounted(loadStoryboard);
 
       <!-- Sticky Action Bar -->
       <div
-        v-if="storyboard && isClient && storyboard.content.status === 'Pending'"
+        v-if="storyboard && canReview && storyboard.content.status === 'Pending'"
         class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50"
       >
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
