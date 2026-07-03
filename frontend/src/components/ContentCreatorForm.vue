@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
 import { api } from '../api';
+import { compressImage } from '../utils/imageCompress';
 
 const props = defineProps({
   initialDate: { type: String, default: null },
@@ -11,6 +12,7 @@ const emit = defineEmits(['close', 'saved']);
 
 const activeTab = ref(0);
 const submitting = ref(false);
+const compressingImage = ref(false);
 const error = ref(null);
 
 const tabs = [
@@ -57,7 +59,7 @@ function removeFrame(index) {
   form.frames.forEach((f, i) => { f.frameNumber = i + 1; });
 }
 
-function handleImageSelect(event, index) {
+async function handleImageSelect(event, index) {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -66,18 +68,20 @@ function handleImageSelect(event, index) {
     return;
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    error.value = 'Image must be under 5MB';
-    return;
-  }
+  compressingImage.value = true;
+  error.value = null;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    form.frames[index].imageBase64 = e.target.result;
-    form.frames[index].imagePreview = e.target.result;
+  try {
+    const compressed = await compressImage(file);
+    form.frames[index].imageBase64 = compressed;
+    form.frames[index].imagePreview = compressed;
     form.frames[index].fileName = file.name;
-  };
-  reader.readAsDataURL(file);
+  } catch {
+    error.value = 'Failed to process image. Try a different file.';
+  } finally {
+    compressingImage.value = false;
+    event.target.value = '';
+  }
 }
 
 function addListItem(field) {
@@ -498,10 +502,10 @@ if (form.frames.length === 0) addFrame();
             </button>
             <button
               @click="handleSubmit"
-              :disabled="submitting"
+              :disabled="submitting || compressingImage"
               class="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              {{ submitting ? 'Submitting...' : 'Submit Content' }}
+              {{ submitting ? 'Submitting...' : compressingImage ? 'Processing image...' : 'Submit Content' }}
             </button>
           </div>
         </div>

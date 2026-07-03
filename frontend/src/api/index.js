@@ -1,21 +1,29 @@
 /**
  * API routing:
- * - localhost  → direct Google Apps Script (text/plain POST avoids preflight)
- * - production → same-origin /api/gas proxy (no CORS)
+ * - GET / small POST  → /api/gas proxy (production) or direct GAS (localhost)
+ * - create with images → direct GAS (bypasses Vercel 4.5MB body limit)
+ *
+ * Set VITE_GAS_URL in Vercel env vars (same value as GAS_URL) for image uploads.
  */
-function getApiBase() {
+const GAS_DIRECT_URL = import.meta.env.VITE_GAS_URL || import.meta.env.VITE_API_URL || '';
+
+function getProxyBase() {
   const host = window.location.hostname;
   const isLocal = host === 'localhost' || host === '127.0.0.1';
   if (!isLocal) return '/api/gas';
-  return import.meta.env.VITE_API_URL || '';
+  return GAS_DIRECT_URL;
+}
+
+function hasImages(body) {
+  return body?.frames?.some((f) => f.imageBase64);
+}
+
+function resolveUrl(base) {
+  return base.startsWith('http') ? new URL(base) : new URL(base, window.location.origin);
 }
 
 async function apiGet(action, params = {}) {
-  const base = getApiBase();
-  const url = base.startsWith('http')
-    ? new URL(base)
-    : new URL(base, window.location.origin);
-
+  const url = resolveUrl(getProxyBase());
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([key, value]) => {
     if (value != null) url.searchParams.set(key, value);
@@ -31,11 +39,11 @@ async function apiGet(action, params = {}) {
 }
 
 async function apiPost(action, body) {
-  const base = getApiBase();
-  const url = base.startsWith('http')
-    ? new URL(base)
-    : new URL(base, window.location.origin);
+  const useDirectGas =
+    GAS_DIRECT_URL && action === 'create' && hasImages(body);
 
+  const base = useDirectGas ? GAS_DIRECT_URL : getProxyBase();
+  const url = resolveUrl(base);
   url.searchParams.set('action', action);
 
   const response = await fetch(url.toString(), {
@@ -44,6 +52,12 @@ async function apiPost(action, body) {
     body: JSON.stringify(body),
     redirect: 'follow',
   });
+
+  if (response.status === 413) {
+    throw new Error(
+      'Upload too large. Try fewer frames, smaller images, or set VITE_GAS_URL in Vercel.'
+    );
+  }
 
   const text = await response.text();
   let json;
