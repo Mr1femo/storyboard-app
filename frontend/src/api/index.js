@@ -35,19 +35,18 @@ async function apiGet(action, params = {}) {
   return json.data;
 }
 
-async function apiPost(action, body, options = {}) {
-  const useDirectGas =
-    (GAS_DIRECT_URL && options.direct) || (action === 'create' && hasImages(body));
+async function apiPost(action, body = {}) {
+  const needsDirect =
+    GAS_DIRECT_URL &&
+    (action === 'create' || action === 'updateContent') &&
+    hasImages(body);
 
-  const base = useDirectGas ? GAS_DIRECT_URL : getProxyBase();
+  const base = needsDirect ? GAS_DIRECT_URL : getProxyBase();
   const url = resolveUrl(base);
   url.searchParams.set('action', action);
 
-  // Send token in query AND body so proxy + GAS both receive it
   const sessionToken = authToken.value || body.token || '';
-  if (sessionToken) {
-    url.searchParams.set('token', sessionToken);
-  }
+  if (sessionToken) url.searchParams.set('token', sessionToken);
 
   const payload = { ...body, token: sessionToken };
 
@@ -76,19 +75,27 @@ async function apiPost(action, body, options = {}) {
 export const api = {
   login: (username, password) => apiPost('login', { username, password }),
 
+  // Content & Storyboard
   getCalendar: (clientId) => apiGet('calendar', clientId ? { clientId } : {}),
   getStoryboard: (contentId) => apiGet('storyboard', { contentId }),
   createContent: (payload) => apiPost('create', payload),
+  updateContent: (payload) => apiPost('updateContent', payload),
+  deleteContent: (contentId) => apiPost('deleteContent', { contentId }),
   updateStatus: (contentId, status, clientFeedback = '') =>
     apiPost('updateStatus', { contentId, status, clientFeedback }),
+  updateFeedback: (payload) => apiPost('updateFeedback', payload),
 
+  // Clients
   getClients: () => apiGet('clients'),
   createClient: (payload) => apiPost('createClient', payload),
   updateClient: (payload) => apiPost('updateClient', payload),
   deleteClient: (clientId) => apiPost('deleteClient', { clientId }),
 
+  // Reports
   getReports: (clientId) => apiGet('reports', clientId ? { clientId } : {}),
   createReport: (payload) => apiPost('createReport', payload),
+  updateReport: (payload) => apiPost('updateReport', payload),
+  deleteReport: (reportId) => apiPost('deleteReport', { reportId }),
 
   healthCheck: () => apiGet('health'),
 };

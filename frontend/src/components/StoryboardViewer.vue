@@ -9,7 +9,7 @@ const props = defineProps({
   contentId: { type: String, required: true },
 });
 
-const emit = defineEmits(['close', 'status-updated']);
+const emit = defineEmits(['close', 'status-updated', 'edit', 'deleted']);
 const { isClient, isAdmin } = useAuth();
 const canReview = computed(() => isClient.value || isAdmin.value);
 
@@ -20,6 +20,8 @@ const showRejectForm = ref(false);
 const rejectFeedback = ref('');
 const submitting = ref(false);
 const actionError = ref(null);
+const editingFeedback = ref(false);
+const feedbackDraft = ref('');
 
 async function loadStoryboard() {
   loading.value = true;
@@ -63,6 +65,63 @@ async function handleReject() {
   }
 }
 
+function startEditFeedback() {
+  feedbackDraft.value = storyboard.value?.content?.clientFeedback || '';
+  editingFeedback.value = true;
+}
+
+async function saveFeedback() {
+  submitting.value = true;
+  actionError.value = null;
+  try {
+    await api.updateFeedback({
+      contentId: props.contentId,
+      clientFeedback: feedbackDraft.value.trim(),
+      status: feedbackDraft.value.trim() ? 'Rejected' : 'Pending',
+      resetToPending: !feedbackDraft.value.trim(),
+    });
+    editingFeedback.value = false;
+    await loadStoryboard();
+  } catch (e) {
+    actionError.value = e.message;
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function clearFeedback() {
+  if (!confirm('Clear client feedback and set status to Pending?')) return;
+  submitting.value = true;
+  actionError.value = null;
+  try {
+    await api.updateFeedback({
+      contentId: props.contentId,
+      clientFeedback: '',
+      status: 'Pending',
+      resetToPending: true,
+    });
+    await loadStoryboard();
+  } catch (e) {
+    actionError.value = e.message;
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleDelete() {
+  if (!confirm('Delete this content and its storyboard permanently?')) return;
+  submitting.value = true;
+  actionError.value = null;
+  try {
+    await api.deleteContent(props.contentId);
+    emit('deleted');
+  } catch (e) {
+    actionError.value = e.message;
+  } finally {
+    submitting.value = false;
+  }
+}
+
 const statusBadge = computed(() => {
   if (!storyboard.value) return {};
   const map = {
@@ -91,16 +150,24 @@ onMounted(loadStoryboard);
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex flex-col bg-gray-50">
       <!-- Top Bar -->
-      <div class="flex items-center justify-between px-4 sm:px-6 py-3 bg-white border-b border-gray-200 shadow-sm">
+      <div class="flex items-center justify-between px-4 sm:px-6 py-3 bg-white border-b border-gray-200 shadow-sm gap-3">
         <button @click="emit('close')" class="flex items-center gap-2 text-sm text-gray-600 hover:text-brand transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
           Back to Calendar
         </button>
-        <span v-if="storyboard" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border" :class="statusBadge">
-          {{ storyboard.content.status }}
-        </span>
+        <div class="flex items-center gap-2">
+          <template v-if="isAdmin && storyboard">
+            <button @click="emit('edit', props.contentId)" class="btn-secondary text-xs">Edit</button>
+            <button @click="handleDelete" :disabled="submitting" class="text-xs px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg">
+              Delete
+            </button>
+          </template>
+          <span v-if="storyboard" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border" :class="statusBadge">
+            {{ storyboard.content.status }}
+          </span>
+        </div>
       </div>
 
       <div v-if="loading" class="flex-1 flex items-center justify-center">
@@ -227,9 +294,35 @@ onMounted(loadStoryboard);
             </div>
           </section>
 
-          <div v-if="storyboard.content.clientFeedback" class="mx-4 sm:mx-8 my-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <p class="text-xs font-semibold text-red-700 uppercase mb-1">Previous Feedback</p>
-            <p class="text-sm text-red-600">{{ storyboard.content.clientFeedback }}</p>
+          <!-- Feedback section -->
+          <div class="mx-4 sm:mx-8 my-4 p-4 bg-white border border-gray-200 rounded-xl">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Client Feedback</p>
+              <div v-if="canReview" class="flex gap-2">
+                <button v-if="!editingFeedback" @click="startEditFeedback" class="text-xs text-brand font-medium">Edit</button>
+                <button
+                  v-if="storyboard.content.clientFeedback && isAdmin"
+                  @click="clearFeedback"
+                  class="text-xs text-red-600 font-medium"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div v-if="editingFeedback" class="space-y-3">
+              <textarea v-model="feedbackDraft" rows="3" class="input-field resize-none" placeholder="Client feedback / required changes..." />
+              <div class="flex justify-end gap-2">
+                <button @click="editingFeedback = false" class="btn-secondary text-xs">Cancel</button>
+                <button @click="saveFeedback" :disabled="submitting" class="btn-primary text-xs">Save Feedback</button>
+              </div>
+            </div>
+            <p v-else-if="storyboard.content.clientFeedback" class="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              {{ storyboard.content.clientFeedback }}
+            </p>
+            <p v-else class="text-sm text-gray-400 italic">No feedback yet.</p>
+
+            <p v-if="actionError" class="mt-2 text-sm text-red-600">{{ actionError }}</p>
           </div>
 
           <BrandFooter class="py-6" />

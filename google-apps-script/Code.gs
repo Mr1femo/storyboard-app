@@ -85,13 +85,28 @@ function handleRequest(e, method) {
         case 'login':
           result = login(payload);
           break;
+
+        // Content & Storyboard CRUD
         case 'create':
           requireAdmin(auth);
           result = createContentWithStoryboard(payload);
           break;
+        case 'updatecontent':
+          requireAdmin(auth);
+          result = updateContentWithStoryboard(payload);
+          break;
+        case 'deletecontent':
+          requireAdmin(auth);
+          result = deleteContent(payload);
+          break;
         case 'updatestatus':
           result = updateContentStatus(payload, auth);
           break;
+        case 'updatefeedback':
+          result = updateFeedback(payload, auth);
+          break;
+
+        // Clients CRUD
         case 'createclient':
           requireAdmin(auth);
           result = createClient(payload);
@@ -104,10 +119,21 @@ function handleRequest(e, method) {
           requireAdmin(auth);
           result = deleteClient(payload);
           break;
+
+        // Reports CRUD
         case 'createreport':
           requireAdmin(auth);
           result = createReport(payload);
           break;
+        case 'updatereport':
+          requireAdmin(auth);
+          result = updateReport(payload);
+          break;
+        case 'deletereport':
+          requireAdmin(auth);
+          result = deleteReport(payload);
+          break;
+
         default:
           throw new Error('Invalid action');
       }
@@ -632,6 +658,111 @@ function createContentWithStoryboard(payload) {
   return { contentId: contentId, message: 'Content and storyboard created successfully' };
 }
 
+function updateContentWithStoryboard(payload) {
+  if (!payload.contentId) throw new Error('contentId is required');
+  validateCreatePayload(payload);
+  if (!payload.clientId) throw new Error('clientId is required');
+
+  ensureContentMasterSchema();
+  const contentId = payload.contentId;
+  const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
+  const rowIndex = findRowIndex(sheet, 'id', contentId);
+  if (rowIndex === -1) throw new Error('Content not found');
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const existing = sheetToObjects(sheet).find(function (c) {
+    return String(c.id) === String(contentId);
+  });
+
+  const values = [
+    contentId,
+    payload.clientId,
+    formatDateValue(payload.date),
+    payload.platform,
+    payload.contentType,
+    payload.caption || '',
+    payload.script || '',
+    payload.status || existing.status || 'Pending',
+    payload.clientFeedback !== undefined ? payload.clientFeedback : (existing.clientFeedback || ''),
+    payload.duration || '',
+    payload.castPeople || '',
+    payload.mood || '',
+  ];
+
+  // Write only known columns by header order
+  const expected = [
+    'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
+    'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
+  ];
+  for (var c = 0; c < expected.length; c++) {
+    var col = headers.indexOf(expected[c]);
+    if (col !== -1) {
+      sheet.getRange(rowIndex, col + 1).setValue(values[c]);
+    }
+  }
+
+  const folderId = getClientFolderId(payload.clientId);
+  replaceStoryboardFrames(contentId, payload.frames || [], folderId);
+  replaceStoryboardFooter(contentId, payload.footer || {});
+
+  return { contentId: contentId, message: 'Content updated successfully' };
+}
+
+function deleteContent(payload) {
+  if (!payload.contentId) throw new Error('contentId is required');
+  ensureContentMasterSchema();
+
+  const contentId = payload.contentId;
+  const master = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
+  const rowIndex = findRowIndex(master, 'id', contentId);
+  if (rowIndex === -1) throw new Error('Content not found');
+
+  master.deleteRow(rowIndex);
+  deleteRowsByValue(getSheet(CONFIG.SHEETS.STORYBOARD_FRAMES), 'contentId', contentId);
+  deleteRowsByValue(getSheet(CONFIG.SHEETS.STORYBOARD_FOOTER), 'contentId', contentId);
+
+  return { contentId: contentId, message: 'Content deleted successfully' };
+}
+
+function replaceStoryboardFrames(contentId, frames, folderId) {
+  const framesSheet = getSheet(CONFIG.SHEETS.STORYBOARD_FRAMES);
+  deleteRowsByValue(framesSheet, 'contentId', contentId);
+
+  frames.forEach(function (frame, index) {
+    const frameId = frame.frameId || generateId('FRM');
+    let imageUrl = frame.imageUrl || '';
+
+    if (frame.imageBase64) {
+      imageUrl = saveBase64ImageToDrive(
+        frame.imageBase64,
+        contentId + '_frame_' + (frame.frameNumber || index + 1),
+        folderId
+      );
+    }
+
+    framesSheet.appendRow([
+      frameId,
+      contentId,
+      frame.frameNumber || index + 1,
+      frame.sceneTitle || '',
+      imageUrl,
+      frame.arDescription || '',
+      frame.lensTechSpecs || '',
+    ]);
+  });
+}
+
+function replaceStoryboardFooter(contentId, footer) {
+  const footerSheet = getSheet(CONFIG.SHEETS.STORYBOARD_FOOTER);
+  deleteRowsByValue(footerSheet, 'contentId', contentId);
+  footerSheet.appendRow([
+    contentId,
+    arrayToCommaList(footer.editingSequence),
+    arrayToCommaList(footer.bRollNotes),
+    arrayToCommaList(footer.productionNotes),
+  ]);
+}
+
 function updateContentStatus(payload, auth) {
   if (!payload.contentId) throw new Error('contentId is required');
   if (!payload.status) throw new Error('status is required');
@@ -648,25 +779,57 @@ function updateContentStatus(payload, auth) {
     throw new Error('Invalid status');
   }
 
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const idCol = headers.indexOf('id');
+  const rowIndex = findRowIndex(sheet, 'id', payload.contentId);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const statusCol = headers.indexOf('status');
   const feedbackCol = headers.indexOf('clientFeedback');
 
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][idCol]) === String(payload.contentId)) {
-      sheet.getRange(i + 1, statusCol + 1).setValue(payload.status);
-      if (payload.status === 'Rejected' && payload.clientFeedback) {
-        sheet.getRange(i + 1, feedbackCol + 1).setValue(payload.clientFeedback);
-      }
-      if (payload.status === 'Approved') {
-        sheet.getRange(i + 1, feedbackCol + 1).setValue('');
-      }
-      return { contentId: payload.contentId, status: payload.status };
-    }
+  sheet.getRange(rowIndex, statusCol + 1).setValue(payload.status);
+  if (payload.status === 'Rejected' && payload.clientFeedback) {
+    sheet.getRange(rowIndex, feedbackCol + 1).setValue(payload.clientFeedback);
   }
-  throw new Error('Content not found');
+  if (payload.status === 'Approved') {
+    sheet.getRange(rowIndex, feedbackCol + 1).setValue('');
+  }
+
+  return { contentId: payload.contentId, status: payload.status };
+}
+
+function updateFeedback(payload, auth) {
+  if (!payload.contentId) throw new Error('contentId is required');
+
+  ensureContentMasterSchema();
+  const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
+  const content = sheetToObjects(sheet).find(function (c) {
+    return String(c.id) === String(payload.contentId);
+  });
+  if (!content) throw new Error('Content not found');
+  assertClientAccess(auth, content.clientId);
+
+  const rowIndex = findRowIndex(sheet, 'id', payload.contentId);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const feedbackCol = headers.indexOf('clientFeedback');
+  const statusCol = headers.indexOf('status');
+
+  const feedback = payload.clientFeedback !== undefined ? payload.clientFeedback : '';
+  sheet.getRange(rowIndex, feedbackCol + 1).setValue(feedback);
+
+  // Optional status change when updating feedback
+  if (payload.status) {
+    const validStatuses = ['Pending', 'Approved', 'Rejected'];
+    if (validStatuses.indexOf(payload.status) === -1) throw new Error('Invalid status');
+    sheet.getRange(rowIndex, statusCol + 1).setValue(payload.status);
+  } else if (feedback && content.status === 'Approved') {
+    sheet.getRange(rowIndex, statusCol + 1).setValue('Rejected');
+  } else if (!feedback && payload.resetToPending) {
+    sheet.getRange(rowIndex, statusCol + 1).setValue('Pending');
+  }
+
+  return {
+    contentId: payload.contentId,
+    clientFeedback: feedback,
+    status: payload.status || content.status,
+  };
 }
 
 function createReport(payload) {
@@ -687,6 +850,73 @@ function createReport(payload) {
   ]);
 
   return { reportId: reportId, message: 'Report created successfully' };
+}
+
+function updateReport(payload) {
+  if (!payload.reportId) throw new Error('reportId is required');
+  if (!payload.clientId || !payload.title) {
+    throw new Error('clientId and title are required');
+  }
+
+  const sheet = getSheet(CONFIG.SHEETS.REPORTS);
+  const rowIndex = findRowIndex(sheet, 'reportId', payload.reportId);
+  if (rowIndex === -1) throw new Error('Report not found');
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const fields = {
+    clientId: payload.clientId,
+    title: payload.title,
+    period: payload.period || '',
+    positives: arrayToCommaList(payload.positives),
+    negatives: arrayToCommaList(payload.negatives),
+  };
+
+  Object.keys(fields).forEach(function (key) {
+    var col = headers.indexOf(key);
+    if (col !== -1) sheet.getRange(rowIndex, col + 1).setValue(fields[key]);
+  });
+
+  return { reportId: payload.reportId, message: 'Report updated successfully' };
+}
+
+function deleteReport(payload) {
+  if (!payload.reportId) throw new Error('reportId is required');
+  const sheet = getSheet(CONFIG.SHEETS.REPORTS);
+  const rowIndex = findRowIndex(sheet, 'reportId', payload.reportId);
+  if (rowIndex === -1) throw new Error('Report not found');
+  sheet.deleteRow(rowIndex);
+  return { reportId: payload.reportId, message: 'Report deleted successfully' };
+}
+
+// ─── Sheet row helpers ───────────────────────────────────────────────────────
+
+function findRowIndex(sheet, idKey, idValue) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return -1;
+  const headers = data[0];
+  const col = headers.indexOf(idKey);
+  if (col === -1) return -1;
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][col]) === String(idValue)) return i + 1; // 1-based sheet row
+  }
+  return -1;
+}
+
+function deleteRowsByValue(sheet, columnName, value) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return;
+
+  const headers = data[0];
+  const col = headers.indexOf(columnName);
+  if (col === -1) return;
+
+  // Delete from bottom to top so indices stay valid
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][col]) === String(value)) {
+      sheet.deleteRow(i + 1);
+    }
+  }
 }
 
 // ─── Authorization & Drive ───────────────────────────────────────────────────

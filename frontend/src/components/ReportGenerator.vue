@@ -1,9 +1,14 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { api } from '../api';
+
+const props = defineProps({
+  report: { type: Object, default: null },
+});
 
 const emit = defineEmits(['close', 'saved']);
 
+const isEdit = computed(() => !!props.report?.reportId);
 const clients = ref([]);
 const loading = ref(true);
 const saving = ref(false);
@@ -20,7 +25,17 @@ const form = ref({
 onMounted(async () => {
   try {
     clients.value = await api.getClients();
-    if (clients.value.length) form.value.clientId = clients.value[0].clientId;
+    if (props.report) {
+      form.value = {
+        clientId: props.report.clientId,
+        title: props.report.title,
+        period: props.report.period || '',
+        positives: props.report.positives?.length ? [...props.report.positives] : [''],
+        negatives: props.report.negatives?.length ? [...props.report.negatives] : [''],
+      };
+    } else if (clients.value.length) {
+      form.value.clientId = clients.value[0].clientId;
+    }
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -45,13 +60,20 @@ async function handleSubmit() {
   saving.value = true;
   error.value = null;
   try {
-    await api.createReport({
+    const payload = {
       clientId: form.value.clientId,
       title: form.value.title,
       period: form.value.period,
       positives: form.value.positives.filter(Boolean),
       negatives: form.value.negatives.filter(Boolean),
-    });
+    };
+
+    if (isEdit.value) {
+      payload.reportId = props.report.reportId;
+      await api.updateReport(payload);
+    } else {
+      await api.createReport(payload);
+    }
     emit('saved');
   } catch (e) {
     error.value = e.message;
@@ -68,7 +90,9 @@ async function handleSubmit() {
       <div class="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl my-8">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h2 class="text-lg font-bold text-gray-900">Generate Performance Report</h2>
+            <h2 class="text-lg font-bold text-gray-900">
+              {{ isEdit ? 'Edit Performance Report' : 'Generate Performance Report' }}
+            </h2>
             <p class="text-sm text-gray-500">Monthly or campaign outcome summary for a client</p>
           </div>
           <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
@@ -94,11 +118,8 @@ async function handleSubmit() {
             <input v-model="form.title" class="input-field" placeholder="Q1 Campaign Performance" />
           </div>
 
-          <!-- Positives -->
           <div>
-            <label class="block text-sm font-semibold text-green-800 mb-2">
-              ✓ Positives / Strengths
-            </label>
+            <label class="block text-sm font-semibold text-green-800 mb-2">✓ Positives / Strengths</label>
             <div class="space-y-2">
               <div v-for="(_, i) in form.positives" :key="'p-' + i" class="flex gap-2">
                 <input
@@ -112,11 +133,8 @@ async function handleSubmit() {
             <button @click="addItem('positives')" class="text-xs text-green-700 font-medium mt-2">+ Add positive</button>
           </div>
 
-          <!-- Negatives -->
           <div>
-            <label class="block text-sm font-semibold text-red-800 mb-2">
-              △ Areas for Improvement
-            </label>
+            <label class="block text-sm font-semibold text-red-800 mb-2">△ Areas for Improvement</label>
             <div class="space-y-2">
               <div v-for="(_, i) in form.negatives" :key="'n-' + i" class="flex gap-2">
                 <input
@@ -137,8 +155,8 @@ async function handleSubmit() {
 
         <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
           <button @click="emit('close')" class="btn-secondary">Cancel</button>
-          <button @click="handleSubmit" :disabled="saving" class="btn-primary">
-            {{ saving ? 'Generating...' : 'Generate Report' }}
+          <button @click="handleSubmit" :disabled="saving || loading" class="btn-primary">
+            {{ saving ? 'Saving...' : isEdit ? 'Update Report' : 'Generate Report' }}
           </button>
         </div>
       </div>

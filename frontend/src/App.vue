@@ -26,6 +26,9 @@ const showViewer = ref(false);
 const showReportGen = ref(false);
 const selectedDate = ref(null);
 const selectedContentId = ref(null);
+const editingContentId = ref(null);
+const editingReport = ref(null);
+const reportsKey = ref(0);
 const selectedClientFilter = ref('');
 
 const subtitle = computed(() => {
@@ -67,7 +70,37 @@ function handleItemClick(item) {
 
 function handleAddNew() {
   selectedDate.value = new Date().toISOString().slice(0, 10);
+  editingContentId.value = null;
   showCreator.value = true;
+}
+
+function handleEditContent(contentId) {
+  editingContentId.value = contentId;
+  showViewer.value = false;
+  showCreator.value = true;
+}
+
+function handleContentSaved() {
+  showCreator.value = false;
+  editingContentId.value = null;
+  selectedContentId.value = null;
+  loadCalendar();
+}
+
+function handleContentDeleted() {
+  showViewer.value = false;
+  selectedContentId.value = null;
+  loadCalendar();
+}
+
+function openNewReport() {
+  editingReport.value = null;
+  showReportGen.value = true;
+}
+
+function openEditReport(report) {
+  editingReport.value = report;
+  showReportGen.value = true;
 }
 
 function handleLogout() {
@@ -111,7 +144,7 @@ watch(selectedClientFilter, () => {
             {{ tab }}
           </button>
           <button v-if="adminTab === 'calendar'" @click="handleAddNew" class="btn-primary text-xs ml-1">+ Add New</button>
-          <button v-if="adminTab === 'reports'" @click="showReportGen = true" class="btn-primary text-xs ml-1">+ Report</button>
+          <button v-if="adminTab === 'reports'" @click="openNewReport" class="btn-primary text-xs ml-1">+ Report</button>
         </template>
 
         <!-- Client tabs -->
@@ -160,7 +193,13 @@ watch(selectedClientFilter, () => {
       <ClientManagement v-if="isAdmin && adminTab === 'clients'" />
 
       <!-- Admin: Reports list -->
-      <ClientReportsView v-if="isAdmin && adminTab === 'reports'" />
+      <ClientReportsView
+        v-if="isAdmin && adminTab === 'reports'"
+        :key="reportsKey"
+        :can-manage="true"
+        @edit="openEditReport"
+        @changed="reportsKey++"
+      />
 
       <!-- Client: Calendar -->
       <template v-if="isClient && clientTab === 'calendar'">
@@ -177,9 +216,10 @@ watch(selectedClientFilter, () => {
       v-if="showCreator && isAdmin"
       :initial-date="selectedDate"
       :initial-client-id="selectedClientFilter"
+      :content-id="editingContentId"
       :clients="clients"
-      @close="showCreator = false"
-      @saved="showCreator = false; loadCalendar()"
+      @close="showCreator = false; editingContentId = null"
+      @saved="handleContentSaved"
     />
 
     <StoryboardViewer
@@ -187,12 +227,15 @@ watch(selectedClientFilter, () => {
       :content-id="selectedContentId"
       @close="showViewer = false; selectedContentId = null"
       @status-updated="showViewer = false; selectedContentId = null; loadCalendar()"
+      @edit="handleEditContent"
+      @deleted="handleContentDeleted"
     />
 
     <ReportGenerator
       v-if="showReportGen"
-      @close="showReportGen = false"
-      @saved="showReportGen = false; adminTab = 'reports'"
+      :report="editingReport"
+      @close="showReportGen = false; editingReport = null"
+      @saved="showReportGen = false; editingReport = null; adminTab = 'reports'; reportsKey++"
     />
   </div>
 </template>

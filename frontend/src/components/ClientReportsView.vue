@@ -5,13 +5,19 @@ import BrandFooter from './BrandFooter.vue';
 
 const props = defineProps({
   clientId: { type: String, default: null },
+  canManage: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['edit', 'changed']);
 
 const reports = ref([]);
 const loading = ref(true);
 const error = ref(null);
+const busyId = ref(null);
 
-onMounted(async () => {
+async function loadReports() {
+  loading.value = true;
+  error.value = null;
   try {
     reports.value = await api.getReports(props.clientId);
   } catch (e) {
@@ -19,14 +25,35 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+
+async function handleDelete(reportId) {
+  if (!confirm('Delete this report permanently?')) return;
+  busyId.value = reportId;
+  try {
+    await api.deleteReport(reportId);
+    await loadReports();
+    emit('changed');
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    busyId.value = null;
+  }
+}
+
+onMounted(loadReports);
+
+defineExpose({ reload: loadReports });
 </script>
 
 <template>
   <div class="space-y-6">
-    <div>
-      <h2 class="text-lg font-bold text-gray-900">Performance Reports</h2>
-      <p class="text-sm text-gray-500">Outcome-based transparency from Raccoon</p>
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">Performance Reports</h2>
+        <p class="text-sm text-gray-500">Outcome-based transparency from Raccoon</p>
+      </div>
+      <button v-if="canManage" @click="loadReports" class="btn-secondary text-xs">Refresh</button>
     </div>
 
     <div v-if="loading" class="py-16 text-center text-sm text-gray-500">Loading reports...</div>
@@ -45,14 +72,24 @@ onMounted(async () => {
         :key="report.reportId"
         class="card-brand shadow-sm overflow-hidden"
       >
-        <!-- Report Header -->
-        <div class="border-b border-brand/10 pb-4 mb-5">
-          <h3 class="text-xl font-bold text-gray-900 font-display">{{ report.title }}</h3>
-          <p v-if="report.period" class="text-sm text-gray-600 mt-1">{{ report.period }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ new Date(report.createdAt).toLocaleDateString() }}</p>
+        <div class="border-b border-brand/10 pb-4 mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900 font-display">{{ report.title }}</h3>
+            <p v-if="report.period" class="text-sm text-gray-600 mt-1">{{ report.period }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ new Date(report.createdAt).toLocaleDateString() }}</p>
+          </div>
+          <div v-if="canManage" class="flex gap-2 flex-shrink-0">
+            <button @click="emit('edit', report)" class="btn-secondary text-xs">Edit</button>
+            <button
+              @click="handleDelete(report.reportId)"
+              :disabled="busyId === report.reportId"
+              class="text-xs px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+            >
+              {{ busyId === report.reportId ? 'Deleting...' : 'Delete' }}
+            </button>
+          </div>
         </div>
 
-        <!-- Positives -->
         <div class="mb-5">
           <h4 class="text-sm font-bold text-green-800 uppercase tracking-wider mb-3 flex items-center gap-2">
             <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -66,16 +103,12 @@ onMounted(async () => {
               :key="'p-' + i"
               class="flex items-start gap-3 px-4 py-3 bg-green-50 border-l-4 border-green-400 text-green-800 rounded-r-lg text-sm"
             >
-              <svg class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
               <span>{{ item }}</span>
             </li>
             <li v-if="!report.positives.length" class="text-sm text-gray-400 italic">No positives recorded</li>
           </ul>
         </div>
 
-        <!-- Negatives -->
         <div>
           <h4 class="text-sm font-bold text-red-800 uppercase tracking-wider mb-3 flex items-center gap-2">
             <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,9 +122,6 @@ onMounted(async () => {
               :key="'n-' + i"
               class="flex items-start gap-3 px-4 py-3 bg-red-50 border-l-4 border-red-400 text-red-800 rounded-r-lg text-sm"
             >
-              <svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-              </svg>
               <span>{{ item }}</span>
             </li>
             <li v-if="!report.negatives.length" class="text-sm text-gray-400 italic">No improvement areas recorded</li>

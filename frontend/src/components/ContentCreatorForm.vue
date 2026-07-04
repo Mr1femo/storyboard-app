@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { api } from '../api';
 import { compressImage } from '../utils/imageCompress';
 
@@ -12,10 +12,14 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved']);
 
+const isEdit = computed(() => !!props.contentId);
 const activeTab = ref(0);
 const submitting = ref(false);
+const loadingEdit = ref(false);
 const compressingImage = ref(false);
 const error = ref(null);
+const existingStatus = ref('Pending');
+const existingFeedback = ref('');
 
 const tabs = [
   { id: 'basic', label: 'Basic Info' },
@@ -101,6 +105,55 @@ const isValid = computed(() => {
   return form.clientId && form.date && form.platform && form.contentType;
 });
 
+async function loadForEdit() {
+  if (!props.contentId) return;
+  loadingEdit.value = true;
+  error.value = null;
+  try {
+    const data = await api.getStoryboard(props.contentId);
+    const c = data.content;
+    form.clientId = c.clientId || form.clientId;
+    form.date = c.date || form.date;
+    form.platform = c.platform || form.platform;
+    form.contentType = c.contentType || form.contentType;
+    form.caption = c.caption || '';
+    form.script = c.script || '';
+    form.duration = c.duration || '';
+    form.castPeople = c.castPeople || '';
+    form.mood = c.mood || '';
+    existingStatus.value = c.status || 'Pending';
+    existingFeedback.value = c.clientFeedback || '';
+
+    form.frames = (data.frames || []).map((f) => ({
+      frameId: f.frameId,
+      frameNumber: f.frameNumber,
+      sceneTitle: f.sceneTitle || '',
+      arDescription: f.arDescription || '',
+      lensTechSpecs: f.lensTechSpecs || '',
+      imageUrl: f.imageUrl || '',
+      imageBase64: null,
+      imagePreview: f.imageUrl || null,
+      fileName: f.imageUrl ? 'Existing image' : '',
+    }));
+
+    form.footer.editingSequence = data.footer?.editingSequence?.length
+      ? [...data.footer.editingSequence]
+      : [''];
+    form.footer.bRollNotes = data.footer?.bRollNotes?.length
+      ? [...data.footer.bRollNotes]
+      : [''];
+    form.footer.productionNotes = data.footer?.productionNotes?.length
+      ? [...data.footer.productionNotes]
+      : [''];
+
+    if (!form.frames.length) addFrame();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    loadingEdit.value = false;
+  }
+}
+
 async function handleSubmit() {
   if (!isValid.value) {
     error.value = 'Please fill in required fields (Client, Date, Platform, Content Type)';
@@ -123,10 +176,12 @@ async function handleSubmit() {
       castPeople: form.castPeople,
       mood: form.mood,
       frames: form.frames.map((f) => ({
+        frameId: f.frameId,
         frameNumber: f.frameNumber,
         sceneTitle: f.sceneTitle,
         arDescription: f.arDescription,
         lensTechSpecs: f.lensTechSpecs,
+        imageUrl: f.imageUrl || '',
         imageBase64: f.imageBase64,
       })),
       footer: {
@@ -136,7 +191,14 @@ async function handleSubmit() {
       },
     };
 
-    await api.createContent(payload);
+    if (isEdit.value) {
+      payload.contentId = props.contentId;
+      payload.status = existingStatus.value;
+      payload.clientFeedback = existingFeedback.value;
+      await api.updateContent(payload);
+    } else {
+      await api.createContent(payload);
+    }
     emit('saved');
   } catch (e) {
     error.value = e.message;
@@ -145,7 +207,13 @@ async function handleSubmit() {
   }
 }
 
-if (form.frames.length === 0) addFrame();
+onMounted(() => {
+  if (props.contentId) {
+    loadForEdit();
+  } else if (form.frames.length === 0) {
+    addFrame();
+  }
+});
 </script>
 
 <template>
@@ -157,8 +225,12 @@ if (form.frames.length === 0) addFrame();
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div>
-            <h2 class="text-lg font-bold text-gray-900">Content & Storyboard Creator</h2>
-            <p class="text-sm text-gray-500">Create new scheduled content with storyboard frames</p>
+            <h2 class="text-lg font-bold text-gray-900">
+              {{ isEdit ? 'Edit Content & Storyboard' : 'Content & Storyboard Creator' }}
+            </h2>
+            <p class="text-sm text-gray-500">
+              {{ isEdit ? 'Update scheduled content and storyboard frames' : 'Create new scheduled content with storyboard frames' }}
+            </p>
           </div>
           <button
             @click="emit('close')"
@@ -513,10 +585,20 @@ if (form.frames.length === 0) addFrame();
             </button>
             <button
               @click="handleSubmit"
-              :disabled="submitting || compressingImage"
+              :disabled="submitting || compressingImage || loadingEdit"
               class="px-6 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              {{ submitting ? 'Submitting...' : compressingImage ? 'Processing image...' : 'Submit Content' }}
+              {{
+                submitting
+                  ? 'Saving...'
+                  : compressingImage
+                    ? 'Processing image...'
+                    : loadingEdit
+                      ? 'Loading...'
+                      : isEdit
+                        ? 'Update Content'
+                        : 'Submit Content'
+              }}
             </button>
           </div>
         </div>
