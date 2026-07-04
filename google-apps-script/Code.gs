@@ -155,6 +155,9 @@ function initializeDatabase() {
  * Content_Master used to lack clientId. New rows were written in the new column
  * order while headers stayed old — calendar filter + status updates broke.
  * This rewrites headers and normalizes existing rows.
+ *
+ * Note: Sheet.getRange(row, column, numRows, numColumns) — 3rd arg is ROW COUNT,
+ * not end-row index.
  */
 function repairContentMasterSchema() {
   const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
@@ -162,12 +165,10 @@ function repairContentMasterSchema() {
     'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
     'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
   ];
+  const colCount = expected.length;
 
-  const lastCol = Math.max(sheet.getLastColumn(), expected.length);
-  const lastRow = sheet.getLastRow();
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
-    return String(h || '');
-  });
+  const values = sheet.getDataRange().getValues();
+  const headers = (values[0] || []).map(function (h) { return String(h || ''); });
 
   const headersOk =
     headers[0] === 'id' &&
@@ -175,15 +176,12 @@ function repairContentMasterSchema() {
     headers[2] === 'date' &&
     headers[7] === 'status';
 
-  var data = [];
-  if (lastRow >= 2) {
-    data = sheet.getRange(2, 1, lastRow, lastCol).getValues();
-  }
+  var data = values.length > 1 ? values.slice(1) : [];
 
   data = data.map(function (row) {
     var r = row.slice();
-    while (r.length < expected.length) r.push('');
-    r = r.slice(0, expected.length);
+    while (r.length < colCount) r.push('');
+    r = r.slice(0, colCount);
 
     var colB = r[1];
     var colBStr = colB instanceof Date
@@ -231,19 +229,13 @@ function repairContentMasterSchema() {
     if (allRowsOk) return;
   }
 
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow, lastCol).clearContent();
-  }
-
-  sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
-  sheet.getRange(1, 1, 1, expected.length)
+  const output = [expected].concat(data);
+  sheet.clearContents();
+  sheet.getRange(1, 1, output.length, colCount).setValues(output);
+  sheet.getRange(1, 1, 1, colCount)
     .setFontWeight('bold')
     .setBackground('#fef8bc');
   sheet.setFrozenRows(1);
-
-  if (data.length) {
-    sheet.getRange(2, 1, data.length + 1, expected.length).setValues(data);
-  }
 
   Logger.log('Content_Master schema repaired. Rows: ' + data.length);
 }
