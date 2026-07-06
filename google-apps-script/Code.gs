@@ -20,6 +20,16 @@ const CONFIG = {
   },
 };
 
+/** Content_Master column order (planning brief + system fields) */
+const CONTENT_MASTER_HEADERS = [
+  'id', 'clientId',
+  'contentPillar', 'campaignType', 'platform', 'format', 'productionType', 'priority',
+  'headline', 'contentTopic', 'contentGoal', 'targetAudience', 'referenceLink',
+  'creativeConcept', 'sceneScript', 'caption', 'aiPrompt',
+  'deadline', 'publishDate', 'publishTime',
+  'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
+];
+
 // ─── HTTP Entry Points ───────────────────────────────────────────────────────
 
 function doGet(e) {
@@ -154,10 +164,7 @@ function initializeDatabase() {
     'clientId', 'clientName', 'username', 'passwordHash', 'folderId', 'role', 'createdAt',
   ]);
 
-  ensureSheet(ss, CONFIG.SHEETS.CONTENT_MASTER, [
-    'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
-    'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
-  ]);
+  ensureSheet(ss, CONFIG.SHEETS.CONTENT_MASTER, CONTENT_MASTER_HEADERS);
 
   ensureSheet(ss, CONFIG.SHEETS.STORYBOARD_FRAMES, [
     'frameId', 'contentId', 'frameNumber', 'sceneTitle',
@@ -178,84 +185,50 @@ function initializeDatabase() {
 }
 
 /**
- * Content_Master used to lack clientId. New rows were written in the new column
- * order while headers stayed old — calendar filter + status updates broke.
- * This rewrites headers and normalizes existing rows.
- *
- * Note: Sheet.getRange(row, column, numRows, numColumns) — 3rd arg is ROW COUNT,
- * not end-row index.
+ * Migrates Content_Master to the planning-brief schema by column name.
+ * Preserves existing values and maps legacy fields (date/contentType/script).
  */
 function repairContentMasterSchema() {
   const sheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
-  const expected = [
-    'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
-    'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
-  ];
+  const expected = CONTENT_MASTER_HEADERS;
   const colCount = expected.length;
-
   const values = sheet.getDataRange().getValues();
   const headers = (values[0] || []).map(function (h) { return String(h || ''); });
 
-  const headersOk =
-    headers[0] === 'id' &&
-    headers[1] === 'clientId' &&
-    headers[2] === 'date' &&
-    headers[7] === 'status';
+  const headersOk = expected.every(function (h, i) { return headers[i] === h; });
+  if (headersOk && values.length <= 1) return;
 
-  var data = values.length > 1 ? values.slice(1) : [];
-
-  data = data.map(function (row) {
-    var r = row.slice();
-    while (r.length < colCount) r.push('');
-    r = r.slice(0, colCount);
-
-    var colB = r[1];
-    var colBStr = colB instanceof Date
-      ? Utilities.formatDate(colB, Session.getScriptTimeZone(), 'yyyy-MM-dd')
-      : String(colB || '');
-    var colG = String(r[6] || '');
-    var colH = String(r[7] || '');
-
-    var isClientId = colBStr.indexOf('CLI_') === 0;
-    var bIsDate = colB instanceof Date || /^\d{4}-\d{2}-\d{2}/.test(colBStr);
-    var statusInH = colH === 'Pending' || colH === 'Approved' || colH === 'Rejected';
-    var statusInG = colG === 'Pending' || colG === 'Approved' || colG === 'Rejected';
-
-    // New writes under old headers: [id, clientId, date, ..., Pending, ...]
-    if (isClientId && statusInH) {
-      return r;
+  var rows = [];
+  for (var i = 1; i < values.length; i++) {
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      if (headers[j]) obj[headers[j]] = values[i][j];
     }
+    if (!obj.id) continue;
 
-    // Legacy rows: [id, date, platform, ..., status, feedback, ...]
-    if (bIsDate && statusInG) {
-      return [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]];
-    }
+    // Legacy field aliases
+    if (!obj.publishDate && obj.date) obj.publishDate = obj.date;
+    if (!obj.format && obj.contentType) obj.format = obj.contentType;
+    if (!obj.sceneScript && obj.script) obj.sceneScript = obj.script;
 
-    return r;
-  }).filter(function (r) {
-    return r[0] !== '' && r[0] !== null && r[0] !== undefined;
-  }).map(function (r) {
-    r[2] = formatDateValue(r[2]);
-    if (r[7] !== 'Pending' && r[7] !== 'Approved' && r[7] !== 'Rejected') {
-      r[7] = 'Pending';
-    }
-    return r;
-  });
-
-  // Idempotent: skip rewrite when headers + row shapes already look correct
-  if (headersOk) {
-    var allRowsOk = data.every(function (r) {
-      var b = String(r[1] || '');
-      var status = String(r[7] || '');
-      var dateOk = /^\d{4}-\d{2}-\d{2}$/.test(String(r[2] || ''));
-      var statusOk = status === 'Pending' || status === 'Approved' || status === 'Rejected';
-      var clientOk = b === '' || b.indexOf('CLI_') === 0;
-      return dateOk && statusOk && clientOk;
+    var row = expected.map(function (key) {
+      if (key === 'publishDate' || key === 'deadline') return formatDateValue(obj[key]);
+      if (key === 'status') return obj.status || 'Pending';
+      if (key === 'clientFeedback') return obj.clientFeedback || '';
+      return obj[key] !== undefined && obj[key] !== null ? obj[key] : '';
     });
-    if (allRowsOk) return;
+    rows.push(row);
   }
 
-  const output = [expected].concat(data);
+  if (headersOk) {
+    var allOk = rows.every(function (r) {
+      var status = String(r[expected.indexOf('status')] || '');
+      return status === 'Pending' || status === 'Approved' || status === 'Rejected';
+    });
+    if (allOk) return;
+  }
+
+  const output = [expected].concat(rows);
   sheet.clearContents();
   sheet.getRange(1, 1, output.length, colCount).setValues(output);
   sheet.getRange(1, 1, 1, colCount)
@@ -263,7 +236,7 @@ function repairContentMasterSchema() {
     .setBackground('#fef8bc');
   sheet.setFrozenRows(1);
 
-  Logger.log('Content_Master schema repaired. Rows: ' + data.length);
+  Logger.log('Content_Master schema repaired. Rows: ' + rows.length);
 }
 
 function ensureContentMasterSchema() {
@@ -513,20 +486,87 @@ function getCalendarData(auth, filterClientId) {
 }
 
 function mapContentRow(row) {
+  const publishDate = formatDateValue(row.publishDate || row.date);
+  const format = row.format || row.contentType || '';
+  const sceneScript = row.sceneScript || row.script || '';
+
   return {
     id: row.id,
     clientId: row.clientId || '',
-    date: formatDateValue(row.date),
-    platform: row.platform,
-    contentType: row.contentType,
-    caption: row.caption,
-    script: row.script,
+    // Planning brief
+    contentPillar: row.contentPillar || '',
+    campaignType: row.campaignType || '',
+    platform: row.platform || '',
+    format: format,
+    contentType: format, // alias for calendar badges
+    productionType: row.productionType || '',
+    priority: row.priority || '',
+    headline: row.headline || '',
+    contentTopic: row.contentTopic || '',
+    contentGoal: row.contentGoal || '',
+    targetAudience: row.targetAudience || '',
+    referenceLink: row.referenceLink || '',
+    creativeConcept: row.creativeConcept || '',
+    sceneScript: sceneScript,
+    script: sceneScript, // alias
+    caption: row.caption || '',
+    aiPrompt: row.aiPrompt || '',
+    deadline: formatDateValue(row.deadline),
+    publishDate: publishDate,
+    date: publishDate, // alias for calendar
+    publishTime: row.publishTime || '',
+    // Workflow / storyboard meta
     status: row.status || 'Pending',
     clientFeedback: row.clientFeedback || '',
     duration: row.duration || '',
     castPeople: row.castPeople || '',
     mood: row.mood || '',
   };
+}
+
+function contentValuesFromPayload(payload, contentId, existing) {
+  existing = existing || {};
+  const publishDate = formatDateValue(payload.publishDate || payload.date);
+  const format = payload.format || payload.contentType || '';
+  const sceneScript = payload.sceneScript || payload.script || '';
+
+  return [
+    contentId,
+    payload.clientId,
+    payload.contentPillar || '',
+    payload.campaignType || '',
+    payload.platform || '',
+    format,
+    payload.productionType || '',
+    payload.priority || '',
+    payload.headline || '',
+    payload.contentTopic || '',
+    payload.contentGoal || '',
+    payload.targetAudience || '',
+    payload.referenceLink || '',
+    payload.creativeConcept || '',
+    sceneScript,
+    payload.caption || '',
+    payload.aiPrompt || '',
+    formatDateValue(payload.deadline),
+    publishDate,
+    payload.publishTime || '',
+    payload.status || existing.status || 'Pending',
+    payload.clientFeedback !== undefined ? payload.clientFeedback : (existing.clientFeedback || ''),
+    payload.duration || '',
+    payload.castPeople || '',
+    payload.mood || '',
+  ];
+}
+
+function writeContentRow(sheet, rowIndex, values) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (var c = 0; c < CONTENT_MASTER_HEADERS.length; c++) {
+    var col = headers.indexOf(CONTENT_MASTER_HEADERS[c]);
+    if (col !== -1) {
+      sheet.getRange(rowIndex, col + 1).setValue(values[c]);
+    }
+  }
 }
 
 function getStoryboardDetails(contentId, auth) {
@@ -608,20 +648,7 @@ function createContentWithStoryboard(payload) {
   const contentId = generateId('CNT');
   const contentSheet = getSheet(CONFIG.SHEETS.CONTENT_MASTER);
 
-  contentSheet.appendRow([
-    contentId,
-    payload.clientId,
-    formatDateValue(payload.date),
-    payload.platform,
-    payload.contentType,
-    payload.caption || '',
-    payload.script || '',
-    'Pending',
-    '',
-    payload.duration || '',
-    payload.castPeople || '',
-    payload.mood || '',
-  ]);
+  contentSheet.appendRow(contentValuesFromPayload(payload, contentId, {}));
 
   const framesSheet = getSheet(CONFIG.SHEETS.STORYBOARD_FRAMES);
   (payload.frames || []).forEach(function (frame, index) {
@@ -669,37 +696,11 @@ function updateContentWithStoryboard(payload) {
   const rowIndex = findRowIndex(sheet, 'id', contentId);
   if (rowIndex === -1) throw new Error('Content not found');
 
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const existing = sheetToObjects(sheet).find(function (c) {
     return String(c.id) === String(contentId);
   });
 
-  const values = [
-    contentId,
-    payload.clientId,
-    formatDateValue(payload.date),
-    payload.platform,
-    payload.contentType,
-    payload.caption || '',
-    payload.script || '',
-    payload.status || existing.status || 'Pending',
-    payload.clientFeedback !== undefined ? payload.clientFeedback : (existing.clientFeedback || ''),
-    payload.duration || '',
-    payload.castPeople || '',
-    payload.mood || '',
-  ];
-
-  // Write only known columns by header order
-  const expected = [
-    'id', 'clientId', 'date', 'platform', 'contentType', 'caption', 'script',
-    'status', 'clientFeedback', 'duration', 'castPeople', 'mood',
-  ];
-  for (var c = 0; c < expected.length; c++) {
-    var col = headers.indexOf(expected[c]);
-    if (col !== -1) {
-      sheet.getRange(rowIndex, col + 1).setValue(values[c]);
-    }
-  }
+  writeContentRow(sheet, rowIndex, contentValuesFromPayload(payload, contentId, existing));
 
   const folderId = getClientFolderId(payload.clientId);
   replaceStoryboardFrames(contentId, payload.frames || [], folderId);
@@ -1047,9 +1048,9 @@ function trashDriveFile(fileId) {
 
 function validateCreatePayload(payload) {
   if (!payload) throw new Error('Request body is required');
-  if (!payload.date) throw new Error('date is required');
-  if (!payload.platform) throw new Error('platform is required');
-  if (!payload.contentType) throw new Error('contentType is required');
+  if (!payload.publishDate && !payload.date) throw new Error('Publish Date is required');
+  if (!payload.platform) throw new Error('Platform is required');
+  if (!payload.format && !payload.contentType) throw new Error('Format is required');
 }
 
 function getSpreadsheet() {

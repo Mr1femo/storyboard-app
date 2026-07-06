@@ -188,7 +188,9 @@ function platformClass(platform) {
                 />
                 <span class="truncate font-medium">{{ item.platform }}</span>
               </div>
-              <span class="truncate block text-[10px] opacity-75">{{ item.contentType }}</span>
+              <span class="truncate block text-[10px] opacity-75">
+                {{ item.headline || item.format || item.contentType }}
+              </span>
             </button>
             <p
               v-if="day.items.length > 3"

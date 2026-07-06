@@ -132,6 +132,21 @@ const statusBadge = computed(() => {
   return map[storyboard.value.content.status] || map.Pending;
 });
 
+const briefFields = [
+  { key: 'contentTopic', label: 'Content Topic' },
+  { key: 'contentGoal', label: 'Content Goal' },
+  { key: 'targetAudience', label: 'Target Audience' },
+  { key: 'productionType', label: 'Production Type' },
+  { key: 'creativeConcept', label: 'Creative Concept' },
+  { key: 'sceneScript', label: 'Scene Script' },
+  { key: 'caption', label: 'Caption' },
+  { key: 'aiPrompt', label: 'AI Prompt' },
+  { key: 'referenceLink', label: 'Reference Link', link: true },
+  { key: 'duration', label: 'Duration' },
+  { key: 'castPeople', label: 'Cast / People' },
+  { key: 'mood', label: 'Mood' },
+];
+
 function frameImageSrc(url) {
   return getDriveImageUrl(url);
 }
@@ -184,36 +199,49 @@ onMounted(loadStoryboard);
       <div v-else-if="storyboard" class="flex-1 overflow-y-auto pb-28">
         <div class="max-w-7xl mx-auto">
 
-          <!-- ═══ TOP: Idea Details ═══ -->
+          <!-- ═══ TOP: Content Brief ═══ -->
           <section class="bg-white border-b border-gray-200 px-4 sm:px-8 py-8">
-            <p class="text-xs font-bold text-brand uppercase tracking-widest mb-3">Content Concept</p>
+            <p class="text-xs font-bold text-brand uppercase tracking-widest mb-3">Content Brief</p>
 
-            <div class="flex flex-wrap gap-3 mb-6">
+            <h1 v-if="storyboard.content.headline" class="text-2xl font-bold text-gray-900 font-display mb-4">
+              {{ storyboard.content.headline }}
+            </h1>
+
+            <div class="flex flex-wrap gap-2 mb-6">
               <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-brand text-white">
                 {{ storyboard.content.platform }}
               </span>
               <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-brand-soft text-gray-900 border border-brand/20">
-                {{ storyboard.content.contentType }}
+                {{ storyboard.content.format || storyboard.content.contentType }}
               </span>
-              <span v-if="storyboard.content.duration" class="text-sm text-gray-500">
-                Duration: {{ storyboard.content.duration }}
+              <span v-if="storyboard.content.contentPillar" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                {{ storyboard.content.contentPillar }}
               </span>
-              <span v-if="storyboard.content.castPeople" class="text-sm text-gray-500">
-                Cast: {{ storyboard.content.castPeople }}
+              <span v-if="storyboard.content.campaignType" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                {{ storyboard.content.campaignType }}
               </span>
-              <span v-if="storyboard.content.mood" class="text-sm text-gray-500">
-                Mood: {{ storyboard.content.mood }}
+              <span v-if="storyboard.content.priority" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                Priority: {{ storyboard.content.priority }}
+              </span>
+              <span v-if="storyboard.content.publishDate" class="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                Publish: {{ storyboard.content.publishDate }}{{ storyboard.content.publishTime ? ' ' + storyboard.content.publishTime : '' }}
+              </span>
+              <span v-if="storyboard.content.deadline" class="px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800">
+                Deadline: {{ storyboard.content.deadline }}
               </span>
             </div>
 
-            <div class="space-y-6">
-              <div>
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Caption</h3>
-                <p class="text-base text-gray-900 leading-relaxed whitespace-pre-wrap">{{ storyboard.content.caption || '—' }}</p>
-              </div>
-              <div>
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Script</h3>
-                <p class="text-base text-gray-800 leading-relaxed whitespace-pre-wrap font-sans">{{ storyboard.content.script || '—' }}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div v-for="field in briefFields" :key="field.key">
+                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{{ field.label }}</h3>
+                <p v-if="field.link && storyboard.content[field.key]" class="text-sm">
+                  <a :href="storyboard.content[field.key]" target="_blank" rel="noopener" class="text-brand underline break-all">
+                    {{ storyboard.content[field.key] }}
+                  </a>
+                </p>
+                <p v-else class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {{ storyboard.content[field.key] || '—' }}
+                </p>
               </div>
             </div>
           </section>

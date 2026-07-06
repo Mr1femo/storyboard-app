@@ -22,22 +22,41 @@ const existingStatus = ref('Pending');
 const existingFeedback = ref('');
 
 const tabs = [
-  { id: 'basic', label: 'Basic Info' },
-  { id: 'metadata', label: 'Storyboard Metadata' },
-  { id: 'frames', label: 'Frames Builder' },
-  { id: 'footer', label: 'Footer Info' },
+  { id: 'planning', label: 'Planning' },
+  { id: 'messaging', label: 'Messaging' },
+  { id: 'creative', label: 'Creative' },
+  { id: 'schedule', label: 'Schedule' },
+  { id: 'frames', label: 'Frames' },
+  { id: 'footer', label: 'Footer' },
 ];
 
-const platforms = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'LinkedIn'];
-const contentTypes = ['Reel', 'Short', 'Ad', 'Post', 'Story', 'Carousel', 'Live'];
+const platforms = ['Instagram', 'TikTok', 'YouTube', 'Facebook', 'Twitter', 'LinkedIn', 'Snapchat'];
+const formats = ['Reel', 'Short', 'Ad', 'Post', 'Story', 'Carousel', 'Live', 'Video', 'Static'];
+const contentPillars = ['Brand Awareness', 'Education', 'Entertainment', 'Promotion', 'Community', 'Product', 'Other'];
+const campaignTypes = ['Always-on', 'Launch', 'Seasonal', 'Paid', 'Organic', 'Partnership', 'Other'];
+const productionTypes = ['In-house', 'UGC', 'Studio', 'AI-generated', 'Hybrid', 'Other'];
+const priorities = ['Low', 'Medium', 'High', 'Urgent'];
 
 const form = reactive({
   clientId: props.initialClientId || props.clients[0]?.clientId || '',
-  date: props.initialDate || new Date().toISOString().slice(0, 10),
+  contentPillar: '',
+  campaignType: '',
   platform: 'Instagram',
-  contentType: 'Reel',
+  format: 'Reel',
+  productionType: '',
+  priority: 'Medium',
+  headline: '',
+  contentTopic: '',
+  contentGoal: '',
+  targetAudience: '',
+  referenceLink: '',
+  creativeConcept: '',
+  sceneScript: '',
   caption: '',
-  script: '',
+  aiPrompt: '',
+  deadline: '',
+  publishDate: props.initialDate || new Date().toISOString().slice(0, 10),
+  publishTime: '',
   duration: '',
   castPeople: '',
   mood: '',
@@ -57,6 +76,7 @@ function addFrame() {
     lensTechSpecs: '',
     imageBase64: null,
     imagePreview: null,
+    imageUrl: '',
     fileName: '',
   });
 }
@@ -69,7 +89,6 @@ function removeFrame(index) {
 async function handleImageSelect(event, index) {
   const file = event.target.files[0];
   if (!file) return;
-
   if (!file.type.startsWith('image/')) {
     error.value = 'Please select a valid image file';
     return;
@@ -77,7 +96,6 @@ async function handleImageSelect(event, index) {
 
   compressingImage.value = true;
   error.value = null;
-
   try {
     const compressed = await compressImage(file);
     form.frames[index].imageBase64 = compressed;
@@ -96,14 +114,56 @@ function addListItem(field) {
 }
 
 function removeListItem(field, index) {
-  if (form.footer[field].length > 1) {
-    form.footer[field].splice(index, 1);
-  }
+  if (form.footer[field].length > 1) form.footer[field].splice(index, 1);
 }
 
 const isValid = computed(() => {
-  return form.clientId && form.date && form.platform && form.contentType;
+  return form.clientId && form.platform && form.format && form.publishDate;
 });
+
+function buildPayload() {
+  return {
+    clientId: form.clientId,
+    contentPillar: form.contentPillar,
+    campaignType: form.campaignType,
+    platform: form.platform,
+    format: form.format,
+    contentType: form.format,
+    productionType: form.productionType,
+    priority: form.priority,
+    headline: form.headline,
+    contentTopic: form.contentTopic,
+    contentGoal: form.contentGoal,
+    targetAudience: form.targetAudience,
+    referenceLink: form.referenceLink,
+    creativeConcept: form.creativeConcept,
+    sceneScript: form.sceneScript,
+    script: form.sceneScript,
+    caption: form.caption,
+    aiPrompt: form.aiPrompt,
+    deadline: form.deadline,
+    publishDate: form.publishDate,
+    date: form.publishDate,
+    publishTime: form.publishTime,
+    duration: form.duration,
+    castPeople: form.castPeople,
+    mood: form.mood,
+    frames: form.frames.map((f) => ({
+      frameId: f.frameId,
+      frameNumber: f.frameNumber,
+      sceneTitle: f.sceneTitle,
+      arDescription: f.arDescription,
+      lensTechSpecs: f.lensTechSpecs,
+      imageUrl: f.imageUrl || '',
+      imageBase64: f.imageBase64,
+    })),
+    footer: {
+      editingSequence: form.footer.editingSequence.filter(Boolean),
+      bRollNotes: form.footer.bRollNotes.filter(Boolean),
+      productionNotes: form.footer.productionNotes.filter(Boolean),
+    },
+  };
+}
 
 async function loadForEdit() {
   if (!props.contentId) return;
@@ -113,11 +173,24 @@ async function loadForEdit() {
     const data = await api.getStoryboard(props.contentId);
     const c = data.content;
     form.clientId = c.clientId || form.clientId;
-    form.date = c.date || form.date;
+    form.contentPillar = c.contentPillar || '';
+    form.campaignType = c.campaignType || '';
     form.platform = c.platform || form.platform;
-    form.contentType = c.contentType || form.contentType;
+    form.format = c.format || c.contentType || form.format;
+    form.productionType = c.productionType || '';
+    form.priority = c.priority || 'Medium';
+    form.headline = c.headline || '';
+    form.contentTopic = c.contentTopic || '';
+    form.contentGoal = c.contentGoal || '';
+    form.targetAudience = c.targetAudience || '';
+    form.referenceLink = c.referenceLink || '';
+    form.creativeConcept = c.creativeConcept || '';
+    form.sceneScript = c.sceneScript || c.script || '';
     form.caption = c.caption || '';
-    form.script = c.script || '';
+    form.aiPrompt = c.aiPrompt || '';
+    form.deadline = c.deadline || '';
+    form.publishDate = c.publishDate || c.date || form.publishDate;
+    form.publishTime = c.publishTime || '';
     form.duration = c.duration || '';
     form.castPeople = c.castPeople || '';
     form.mood = c.mood || '';
@@ -136,15 +209,9 @@ async function loadForEdit() {
       fileName: f.imageUrl ? 'Existing image' : '',
     }));
 
-    form.footer.editingSequence = data.footer?.editingSequence?.length
-      ? [...data.footer.editingSequence]
-      : [''];
-    form.footer.bRollNotes = data.footer?.bRollNotes?.length
-      ? [...data.footer.bRollNotes]
-      : [''];
-    form.footer.productionNotes = data.footer?.productionNotes?.length
-      ? [...data.footer.productionNotes]
-      : [''];
+    form.footer.editingSequence = data.footer?.editingSequence?.length ? [...data.footer.editingSequence] : [''];
+    form.footer.bRollNotes = data.footer?.bRollNotes?.length ? [...data.footer.bRollNotes] : [''];
+    form.footer.productionNotes = data.footer?.productionNotes?.length ? [...data.footer.productionNotes] : [''];
 
     if (!form.frames.length) addFrame();
   } catch (e) {
@@ -156,41 +223,15 @@ async function loadForEdit() {
 
 async function handleSubmit() {
   if (!isValid.value) {
-    error.value = 'Please fill in required fields (Client, Date, Platform, Content Type)';
+    error.value = 'Please fill required fields: Client, Platform, Format, Publish Date';
     activeTab.value = 0;
     return;
   }
 
   submitting.value = true;
   error.value = null;
-
   try {
-    const payload = {
-      clientId: form.clientId,
-      date: form.date,
-      platform: form.platform,
-      contentType: form.contentType,
-      caption: form.caption,
-      script: form.script,
-      duration: form.duration,
-      castPeople: form.castPeople,
-      mood: form.mood,
-      frames: form.frames.map((f) => ({
-        frameId: f.frameId,
-        frameNumber: f.frameNumber,
-        sceneTitle: f.sceneTitle,
-        arDescription: f.arDescription,
-        lensTechSpecs: f.lensTechSpecs,
-        imageUrl: f.imageUrl || '',
-        imageBase64: f.imageBase64,
-      })),
-      footer: {
-        editingSequence: form.footer.editingSequence.filter(Boolean),
-        bRollNotes: form.footer.bRollNotes.filter(Boolean),
-        productionNotes: form.footer.productionNotes.filter(Boolean),
-      },
-    };
-
+    const payload = buildPayload();
     if (isEdit.value) {
       payload.contentId = props.contentId;
       payload.status = existingStatus.value;
@@ -208,11 +249,8 @@ async function handleSubmit() {
 }
 
 onMounted(() => {
-  if (props.contentId) {
-    loadForEdit();
-  } else if (form.frames.length === 0) {
-    addFrame();
-  }
+  if (props.contentId) loadForEdit();
+  else if (!form.frames.length) addFrame();
 });
 </script>
 
@@ -221,383 +259,238 @@ onMounted(() => {
     <div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto">
       <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')" />
 
-      <div class="relative w-full max-w-4xl mx-4 my-8 bg-white rounded-2xl shadow-2xl overflow-hidden animate-in">
-        <!-- Header -->
+      <div class="relative w-full max-w-4xl mx-4 my-8 bg-white rounded-2xl shadow-2xl overflow-hidden">
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div>
             <h2 class="text-lg font-bold text-gray-900">
-              {{ isEdit ? 'Edit Content & Storyboard' : 'Content & Storyboard Creator' }}
+              {{ isEdit ? 'Edit Content Brief' : 'New Content Brief' }}
             </h2>
-            <p class="text-sm text-gray-500">
-              {{ isEdit ? 'Update scheduled content and storyboard frames' : 'Create new scheduled content with storyboard frames' }}
-            </p>
+            <p class="text-sm text-gray-500">Planning fields + storyboard production details</p>
           </div>
-          <button
-            @click="emit('close')"
-            class="p-2 hover:bg-gray-200 rounded-lg transition-colors text-gray-500"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <button @click="emit('close')" class="p-2 hover:bg-gray-200 rounded-lg text-gray-500">&times;</button>
         </div>
 
-        <!-- Tabs -->
         <div class="flex border-b border-gray-200 overflow-x-auto">
           <button
             v-for="(tab, index) in tabs"
             :key="tab.id"
             @click="activeTab = index"
-            class="flex-shrink-0 px-5 py-3 text-sm font-medium border-b-2 transition-colors"
-            :class="activeTab === index
-              ? 'border-brand text-brand'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'"
+            class="flex-shrink-0 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+            :class="activeTab === index ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'"
           >
             <span class="flex items-center gap-2">
               <span
                 class="w-5 h-5 rounded-full text-xs flex items-center justify-center"
                 :class="activeTab === index ? 'bg-brand text-white' : 'bg-gray-200 text-gray-600'"
-              >
-                {{ index + 1 }}
-              </span>
+              >{{ index + 1 }}</span>
               {{ tab.label }}
             </span>
           </button>
         </div>
 
-        <!-- Form Body -->
-        <div class="px-6 py-6 max-h-[60vh] overflow-y-auto scrollbar-thin">
-          <!-- Tab 1: Basic Info -->
-          <div v-show="activeTab === 0" class="space-y-5">
+        <div class="px-6 py-6 max-h-[60vh] overflow-y-auto space-y-5">
+          <!-- Planning -->
+          <div v-show="activeTab === 0" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Client *</label>
               <select v-model="form.clientId" class="input-field">
                 <option v-for="c in clients" :key="c.clientId" :value="c.clientId">{{ c.clientName }}</option>
               </select>
-              <p v-if="!clients.length" class="text-xs text-red-500 mt-1">Create a client account first</p>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                <input
-                  v-model="form.date"
-                  type="date"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand transition-shadow"
-                />
+                <label class="block text-sm font-medium text-gray-700 mb-1">Content Pillar</label>
+                <select v-model="form.contentPillar" class="input-field">
+                  <option value="">Select...</option>
+                  <option v-for="p in contentPillars" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Campaign Type</label>
+                <select v-model="form.campaignType" class="input-field">
+                  <option value="">Select...</option>
+                  <option v-for="p in campaignTypes" :key="p" :value="p">{{ p }}</option>
+                </select>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Platform *</label>
-                <select
-                  v-model="form.platform"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                >
+                <select v-model="form.platform" class="input-field">
                   <option v-for="p in platforms" :key="p" :value="p">{{ p }}</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Content Type *</label>
-                <select
-                  v-model="form.contentType"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                >
-                  <option v-for="t in contentTypes" :key="t" :value="t">{{ t }}</option>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Format *</label>
+                <select v-model="form.format" class="input-field">
+                  <option v-for="p in formats" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Production Type</label>
+                <select v-model="form.productionType" class="input-field">
+                  <option value="">Select...</option>
+                  <option v-for="p in productionTypes" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <select v-model="form.priority" class="input-field">
+                  <option v-for="p in priorities" :key="p" :value="p">{{ p }}</option>
                 </select>
               </div>
             </div>
+          </div>
+
+          <!-- Messaging -->
+          <div v-show="activeTab === 1" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Caption</label>
-              <textarea
-                v-model="form.caption"
-                rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
-                placeholder="Social media caption..."
-              />
+              <label class="block text-sm font-medium text-gray-700 mb-1">Headline</label>
+              <input v-model="form.headline" class="input-field" placeholder="Main headline / hook" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Script</label>
-              <textarea
-                v-model="form.script"
-                rows="4"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
-                placeholder="Full script or talking points..."
-              />
+              <label class="block text-sm font-medium text-gray-700 mb-1">Content Topic</label>
+              <input v-model="form.contentTopic" class="input-field" placeholder="What is this content about?" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Content Goal</label>
+              <textarea v-model="form.contentGoal" rows="2" class="input-field resize-none" placeholder="Awareness, leads, engagement..." />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Target Audience</label>
+              <input v-model="form.targetAudience" class="input-field" placeholder="Who is this for?" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Reference Link</label>
+              <input v-model="form.referenceLink" type="url" class="input-field" placeholder="https://..." />
             </div>
           </div>
 
-          <!-- Tab 2: Metadata -->
-          <div v-show="activeTab === 1" class="space-y-5">
+          <!-- Creative -->
+          <div v-show="activeTab === 2" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Creative Concept</label>
+              <textarea v-model="form.creativeConcept" rows="3" class="input-field resize-none" placeholder="Big idea / visual direction..." />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Scene Script</label>
+              <textarea v-model="form.sceneScript" rows="4" class="input-field resize-none" placeholder="Full scene-by-scene script..." />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Caption</label>
+              <textarea v-model="form.caption" rows="3" class="input-field resize-none" placeholder="Social caption..." />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">AI Prompt</label>
+              <textarea v-model="form.aiPrompt" rows="3" class="input-field resize-none" placeholder="Prompt used for AI visuals / copy..." />
+            </div>
+          </div>
+
+          <!-- Schedule -->
+          <div v-show="activeTab === 3" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
+                <input v-model="form.deadline" type="date" class="input-field" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Publish Date *</label>
+                <input v-model="form.publishDate" type="date" class="input-field" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Publish Time</label>
+                <input v-model="form.publishTime" type="time" class="input-field" />
+              </div>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Duration</label>
-                <input
-                  v-model="form.duration"
-                  type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                  placeholder="e.g. 60 sec"
-                />
+                <input v-model="form.duration" class="input-field" placeholder="e.g. 30 sec" />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Cast / People</label>
-                <input
-                  v-model="form.castPeople"
-                  type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                  placeholder="e.g. Host, Guest"
-                />
+                <input v-model="form.castPeople" class="input-field" placeholder="Host, talent..." />
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Mood</label>
-                <input
-                  v-model="form.mood"
-                  type="text"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                  placeholder="e.g. Energetic, Calm"
-                />
+                <input v-model="form.mood" class="input-field" placeholder="Energetic, calm..." />
               </div>
             </div>
           </div>
 
-          <!-- Tab 3: Frames -->
-          <div v-show="activeTab === 2" class="space-y-4">
-            <div
-              v-for="(frame, index) in form.frames"
-              :key="index"
-              class="border border-gray-200 rounded-xl p-4 bg-gray-50/50"
-            >
+          <!-- Frames -->
+          <div v-show="activeTab === 4" class="space-y-4">
+            <div v-for="(frame, index) in form.frames" :key="index" class="border border-gray-200 rounded-xl p-4 bg-gray-50/50">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-sm font-semibold text-gray-700">
-                  Frame #{{ frame.frameNumber }}
-                </span>
-                <button
-                  v-if="form.frames.length > 1"
-                  @click="removeFrame(index)"
-                  class="text-red-500 hover:text-red-700 text-xs font-medium"
-                >
-                  Remove
-                </button>
+                <span class="text-sm font-semibold text-gray-700">Frame #{{ frame.frameNumber }}</span>
+                <button v-if="form.frames.length > 1" @click="removeFrame(index)" class="text-red-500 text-xs font-medium">Remove</button>
               </div>
-
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Scene Title (English)</label>
-                  <input
-                    v-model="frame.sceneTitle"
-                    type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                    placeholder="INTRO SHOT"
-                  />
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Scene Title</label>
+                  <input v-model="frame.sceneTitle" class="input-field text-sm" placeholder="INTRO SHOT" />
                 </div>
                 <div>
                   <label class="block text-xs font-medium text-gray-600 mb-1">Technical Specs</label>
-                  <input
-                    v-model="frame.lensTechSpecs"
-                    type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                    placeholder="LENS: 50mm | SHOT: B-Roll"
-                  />
+                  <input v-model="frame.lensTechSpecs" class="input-field text-sm" placeholder="LENS: 50mm | SHOT: B-Roll" />
                 </div>
               </div>
-
               <div class="mt-3">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Arabic Action Description</label>
-                <textarea
-                  v-model="frame.arDescription"
-                  rows="2"
-                  dir="rtl"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-brand/30 focus:border-brand resize-none"
-                  placeholder="وصف المشهد بالعربية..."
-                />
+                <textarea v-model="frame.arDescription" rows="2" dir="rtl" class="input-field text-sm font-arabic resize-none" placeholder="وصف المشهد..." />
               </div>
-
               <div class="mt-3">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Frame Image</label>
-                <div class="flex items-start gap-4">
-                  <label class="flex-1 flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand hover:bg-brand-soft transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      class="hidden"
-                      @change="handleImageSelect($event, index)"
-                    />
-                    <svg v-if="!frame.imagePreview" class="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span v-if="!frame.imagePreview" class="text-xs text-gray-500">Click to upload image</span>
-                    <img
-                      v-else
-                      :src="frame.imagePreview"
-                      :alt="frame.fileName"
-                      class="w-full h-full object-cover rounded-lg"
-                    />
-                  </label>
-                </div>
-                <p v-if="frame.fileName" class="text-[10px] text-gray-400 mt-1">{{ frame.fileName }}</p>
+                <label class="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-brand hover:bg-brand-soft transition-colors overflow-hidden">
+                  <input type="file" accept="image/*" class="hidden" @change="handleImageSelect($event, index)" />
+                  <img v-if="frame.imagePreview" :src="frame.imagePreview" class="w-full h-full object-cover" />
+                  <span v-else class="text-xs text-gray-500">Click to upload</span>
+                </label>
               </div>
             </div>
-
-            <button
-              @click="addFrame"
-              class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:border-brand hover:text-brand hover:bg-brand-soft transition-colors"
-            >
+            <button @click="addFrame" class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm font-medium text-gray-600 hover:border-brand hover:text-brand hover:bg-brand-soft">
               + Add New Frame
             </button>
           </div>
 
-          <!-- Tab 4: Footer -->
-          <div v-show="activeTab === 3" class="space-y-6">
-            <!-- Editing Sequence -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Editing Sequence (Steps)</label>
+          <!-- Footer -->
+          <div v-show="activeTab === 5" class="space-y-6">
+            <div v-for="field in [
+              { key: 'editingSequence', label: 'Editing Sequence', placeholder: 'Hook, Problem, CTA' },
+              { key: 'bRollNotes', label: 'B-Roll Ideas (Arabic)', placeholder: 'فكرة لقطة...', rtl: true },
+              { key: 'productionNotes', label: 'Production Notes', placeholder: 'Natural lighting' },
+            ]" :key="field.key">
+              <label class="block text-sm font-medium text-gray-700 mb-2">{{ field.label }}</label>
               <div class="space-y-2">
-                <div
-                  v-for="(_, index) in form.footer.editingSequence"
-                  :key="'edit-' + index"
-                  class="flex items-center gap-2"
-                >
-                  <span class="text-xs text-gray-400 w-6">{{ index + 1 }}.</span>
+                <div v-for="(_, index) in form.footer[field.key]" :key="field.key + index" class="flex items-center gap-2">
                   <input
-                    v-model="form.footer.editingSequence[index]"
-                    type="text"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                    placeholder="e.g. Hook, Problem, Solution, CTA"
+                    v-model="form.footer[field.key][index]"
+                    class="input-field text-sm"
+                    :class="field.rtl ? 'font-arabic' : ''"
+                    :dir="field.rtl ? 'rtl' : 'ltr'"
+                    :placeholder="field.placeholder"
                   />
-                  <button
-                    v-if="form.footer.editingSequence.length > 1"
-                    @click="removeListItem('editingSequence', index)"
-                    class="text-red-400 hover:text-red-600 p-1"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  <button v-if="form.footer[field.key].length > 1" @click="removeListItem(field.key, index)" class="text-red-400 px-2">×</button>
                 </div>
               </div>
-              <button
-                @click="addListItem('editingSequence')"
-                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
-              >
-                + Add Step
-              </button>
-            </div>
-
-            <!-- B-Roll Notes (Arabic) -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">B-Roll Ideas (Arabic)</label>
-              <div class="space-y-2">
-                <div
-                  v-for="(_, index) in form.footer.bRollNotes"
-                  :key="'broll-' + index"
-                  class="flex items-center gap-2"
-                >
-                  <span class="text-xs text-gray-400">•</span>
-                  <input
-                    v-model="form.footer.bRollNotes[index]"
-                    type="text"
-                    dir="rtl"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-arabic focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                    placeholder="فكرة لقطة إضافية..."
-                  />
-                  <button
-                    v-if="form.footer.bRollNotes.length > 1"
-                    @click="removeListItem('bRollNotes', index)"
-                    class="text-red-400 hover:text-red-600 p-1"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <button
-                @click="addListItem('bRollNotes')"
-                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
-              >
-                + Add B-Roll Idea
-              </button>
-            </div>
-
-            <!-- Production Notes -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Production Notes (English)</label>
-              <div class="space-y-2">
-                <div
-                  v-for="(_, index) in form.footer.productionNotes"
-                  :key="'prod-' + index"
-                  class="flex items-center gap-2"
-                >
-                  <span class="text-xs text-gray-400">•</span>
-                  <input
-                    v-model="form.footer.productionNotes[index]"
-                    type="text"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand/30 focus:border-brand"
-                    placeholder="e.g. Use natural lighting"
-                  />
-                  <button
-                    v-if="form.footer.productionNotes.length > 1"
-                    @click="removeListItem('productionNotes', index)"
-                    class="text-red-400 hover:text-red-600 p-1"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <button
-                @click="addListItem('productionNotes')"
-                class="mt-2 text-xs text-brand hover:text-brand-dark font-medium"
-              >
-                + Add Production Note
-              </button>
+              <button @click="addListItem(field.key)" class="mt-2 text-xs text-brand font-medium">+ Add</button>
             </div>
           </div>
         </div>
 
-        <!-- Error -->
-        <div v-if="error" class="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {{ error }}
-        </div>
+        <div v-if="error" class="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{{ error }}</div>
 
-        <!-- Footer Actions -->
         <div class="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
           <div class="flex gap-2">
-            <button
-              v-if="activeTab > 0"
-              @click="activeTab--"
-              class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              v-if="activeTab < tabs.length - 1"
-              @click="activeTab++"
-              class="px-4 py-2 text-sm font-medium text-brand hover:bg-brand-soft rounded-lg transition-colors"
-            >
-              Next
-            </button>
+            <button v-if="activeTab > 0" @click="activeTab--" class="btn-secondary">Previous</button>
+            <button v-if="activeTab < tabs.length - 1" @click="activeTab++" class="text-sm font-medium text-brand hover:bg-brand-soft px-4 py-2 rounded-lg">Next</button>
           </div>
           <div class="flex gap-2">
-            <button
-              @click="emit('close')"
-              class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              @click="handleSubmit"
-              :disabled="submitting || compressingImage || loadingEdit"
-              class="px-6 py-2 text-sm font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
+            <button @click="emit('close')" class="btn-secondary">Cancel</button>
+            <button @click="handleSubmit" :disabled="submitting || compressingImage || loadingEdit" class="btn-primary">
               {{
-                submitting
-                  ? 'Saving...'
-                  : compressingImage
-                    ? 'Processing image...'
-                    : loadingEdit
-                      ? 'Loading...'
-                      : isEdit
-                        ? 'Update Content'
-                        : 'Submit Content'
+                submitting ? 'Saving...'
+                : compressingImage ? 'Processing image...'
+                : loadingEdit ? 'Loading...'
+                : isEdit ? 'Update Content' : 'Submit Content'
               }}
             </button>
           </div>
@@ -606,13 +499,3 @@ onMounted(() => {
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-in {
-  animation: fadeIn 0.2s ease-out;
-}
-</style>
