@@ -45,7 +45,7 @@ function handleRequest(e, method) {
     const action = (e.parameter.action || '').toLowerCase();
     const contentId = e.parameter.contentId || '';
     const clientId = e.parameter.clientId || '';
-    const publicActions = { login: true, health: true, testdrive: true };
+    const publicActions = { login: true, health: true, testdrive: true, forgotpassword: true };
 
     let result;
     let auth = null;
@@ -142,6 +142,17 @@ function handleRequest(e, method) {
         case 'deletereport':
           requireAdmin(auth);
           result = deleteReport(payload);
+          break;
+
+        case 'changepassword':
+          result = changePassword(payload, auth);
+          break;
+        case 'adminresetpassword':
+          requireAdmin(auth);
+          result = adminResetPassword(payload);
+          break;
+        case 'forgotpassword':
+          result = forgotPassword(payload);
           break;
 
         default:
@@ -321,6 +332,97 @@ function login(payload) {
 function hashPassword(password) {
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
   return Utilities.base64Encode(digest);
+}
+
+function generateTempPassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  var result = '';
+  for (var i = 0; i < 10; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+function findClientByUsername(username) {
+  const sheet = getSheet(CONFIG.SHEETS.CLIENTS);
+  const clients = sheetToObjects(sheet, 'clientId');
+  return clients.find(function (c) {
+    return String(c.username).toLowerCase() === String(username).toLowerCase();
+  });
+}
+
+function findClientById(clientId) {
+  const sheet = getSheet(CONFIG.SHEETS.CLIENTS);
+  const clients = sheetToObjects(sheet, 'clientId');
+  return clients.find(function (c) { return String(c.clientId) === String(clientId); });
+}
+
+function setClientPassword(clientId, newPassword) {
+  if (!newPassword || String(newPassword).length < 6) {
+    throw new Error('Password must be at least 6 characters');
+  }
+  const sheet = getSheet(CONFIG.SHEETS.CLIENTS);
+  const rowIndex = findRowIndex(sheet, 'clientId', clientId);
+  if (rowIndex === -1) throw new Error('Account not found');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hashCol = headers.indexOf('passwordHash');
+  sheet.getRange(rowIndex, hashCol + 1).setValue(hashPassword(newPassword));
+}
+
+/** Logged-in user changes own password */
+function changePassword(payload, auth) {
+  if (!payload.currentPassword || !payload.newPassword) {
+    throw new Error('Current password and new password are required');
+  }
+  if (String(payload.newPassword).length < 6) {
+    throw new Error('New password must be at least 6 characters');
+  }
+  if (payload.currentPassword === payload.newPassword) {
+    throw new Error('New password must be different from current password');
+  }
+
+  const user = findClientById(auth.id);
+  if (!user) throw new Error('Account not found');
+  if (user.passwordHash !== hashPassword(payload.currentPassword)) {
+    throw new Error('Current password is incorrect');
+  }
+
+  setClientPassword(auth.id, payload.newPassword);
+  return { message: 'Password changed successfully' };
+}
+
+/** Admin resets any client password */
+function adminResetPassword(payload) {
+  if (!payload.clientId || !payload.newPassword) {
+    throw new Error('clientId and newPassword are required');
+  }
+  const user = findClientById(payload.clientId);
+  if (!user) throw new Error('Client not found');
+  setClientPassword(payload.clientId, payload.newPassword);
+  return {
+    clientId: payload.clientId,
+    username: user.username,
+    message: 'Password reset successfully',
+  };
+}
+
+/** Forgot password — generates a temporary password (no login required) */
+function forgotPassword(payload) {
+  if (!payload.username) throw new Error('Username is required');
+
+  const user = findClientByUsername(payload.username);
+  if (!user) {
+    throw new Error('Username not found. Please contact Raccoon support.');
+  }
+
+  const tempPassword = generateTempPassword();
+  setClientPassword(user.clientId, tempPassword);
+
+  return {
+    username: user.username,
+    temporaryPassword: tempPassword,
+    message: 'Temporary password generated. Sign in and change your password immediately.',
+  };
 }
 
 function getAuthSecret() {

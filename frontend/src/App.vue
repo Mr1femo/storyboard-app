@@ -9,7 +9,7 @@ import ContentCreatorForm from './components/ContentCreatorForm.vue';
 import StoryboardViewer from './components/StoryboardViewer.vue';
 import ClientManagement from './components/ClientManagement.vue';
 import ReportGenerator from './components/ReportGenerator.vue';
-import ClientReportsView from './components/ClientReportsView.vue';
+import ChangePasswordModal from './components/ChangePasswordModal.vue';
 
 const { user, isAuthenticated, isAdmin, isClient, logout } = useAuth();
 
@@ -30,6 +30,7 @@ const editingContentId = ref(null);
 const editingReport = ref(null);
 const reportsKey = ref(0);
 const selectedClientFilter = ref('');
+const showChangePassword = ref(false);
 
 const subtitle = computed(() => {
   if (isAdmin.value) return 'Creator Dashboard';
@@ -165,6 +166,9 @@ watch(selectedClientFilter, () => {
           </button>
         </template>
 
+        <button @click="showChangePassword = true" class="text-sm text-gray-500 hover:text-brand px-3 py-1.5 rounded-lg hover:bg-brand-soft">
+          Password
+        </button>
         <button @click="loadCalendar" class="p-2 text-gray-400 hover:text-brand rounded-lg" title="Refresh">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -236,6 +240,12 @@ watch(selectedClientFilter, () => {
       :report="editingReport"
       @close="showReportGen = false; editingReport = null"
       @saved="showReportGen = false; editingReport = null; adminTab = 'reports'; reportsKey++"
+    />
+
+    <ChangePasswordModal
+      v-if="showChangePassword"
+      @close="showChangePassword = false"
+      @success="showChangePassword = false"
     />
   </div>
 </template>

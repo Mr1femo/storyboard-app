@@ -97,5 +97,11 @@ export const api = {
   updateReport: (payload) => apiPost('updateReport', payload),
   deleteReport: (reportId) => apiPost('deleteReport', { reportId }),
 
+  changePassword: (currentPassword, newPassword) =>
+    apiPost('changePassword', { currentPassword, newPassword }),
+  forgotPassword: (username) => apiPost('forgotPassword', { username }),
+  adminResetPassword: (clientId, newPassword) =>
+    apiPost('adminResetPassword', { clientId, newPassword }),
+
   healthCheck: () => apiGet('health'),
 };

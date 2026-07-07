@@ -8,6 +8,11 @@ const error = ref(null);
 const saving = ref(false);
 const showForm = ref(false);
 const editingId = ref(null);
+const showResetPassword = ref(false);
+const resetClient = ref(null);
+const resetPassword = ref('');
+const resetConfirm = ref('');
+const resetSaving = ref(false);
 
 const form = ref({
   clientName: '',
@@ -75,6 +80,36 @@ async function handleDelete(clientId) {
   }
 }
 
+function openResetPassword(client) {
+  resetClient.value = client;
+  resetPassword.value = '';
+  resetConfirm.value = '';
+  showResetPassword.value = true;
+}
+
+async function handleResetPassword() {
+  if (!resetPassword.value || resetPassword.value.length < 6) {
+    error.value = 'Password must be at least 6 characters';
+    return;
+  }
+  if (resetPassword.value !== resetConfirm.value) {
+    error.value = 'Passwords do not match';
+    return;
+  }
+
+  resetSaving.value = true;
+  error.value = null;
+  try {
+    await api.adminResetPassword(resetClient.value.clientId, resetPassword.value);
+    showResetPassword.value = false;
+    resetClient.value = null;
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    resetSaving.value = false;
+  }
+}
+
 onMounted(loadClients);
 </script>
 
@@ -113,6 +148,7 @@ onMounted(loadClients);
         </div>
         <div class="flex gap-2">
           <button @click="openEdit(client)" class="btn-secondary text-xs">Edit</button>
+          <button @click="openResetPassword(client)" class="btn-secondary text-xs">Reset Password</button>
           <button
             @click="handleDelete(client.clientId)"
             class="text-xs px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -156,6 +192,35 @@ onMounted(loadClients);
             <button @click="showForm = false" class="btn-secondary">Cancel</button>
             <button @click="handleSave" :disabled="saving" class="btn-primary">
               {{ saving ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Reset Password Modal -->
+    <Teleport to="body">
+      <div v-if="showResetPassword" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="fixed inset-0 bg-black/40" @click="showResetPassword = false" />
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <h3 class="text-lg font-bold text-gray-900 mb-1">Reset Password</h3>
+          <p class="text-sm text-gray-500 mb-4">
+            Set a new password for <strong>{{ resetClient?.clientName }}</strong> ({{ resetClient?.username }})
+          </p>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+              <input v-model="resetPassword" type="password" class="input-field" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+              <input v-model="resetConfirm" type="password" class="input-field" />
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button @click="showResetPassword = false" class="btn-secondary">Cancel</button>
+            <button @click="handleResetPassword" :disabled="resetSaving" class="btn-primary">
+              {{ resetSaving ? 'Saving...' : 'Reset Password' }}
             </button>
           </div>
         </div>
