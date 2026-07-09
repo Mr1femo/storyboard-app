@@ -8,6 +8,7 @@ import CalendarView from './components/CalendarView.vue';
 import ContentCreatorForm from './components/ContentCreatorForm.vue';
 import StoryboardViewer from './components/StoryboardViewer.vue';
 import ClientManagement from './components/ClientManagement.vue';
+import ClientReportsView from './components/ClientReportsView.vue';
 import ReportGenerator from './components/ReportGenerator.vue';
 import ChangePasswordModal from './components/ChangePasswordModal.vue';
 
