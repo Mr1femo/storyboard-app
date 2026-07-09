@@ -17,6 +17,7 @@ const error = ref(null);
 const form = ref({
   clientId: '',
   title: '',
+  contributors: '',
   period: '',
   positives: [''],
   negatives: [''],
@@ -29,6 +30,7 @@ onMounted(async () => {
       form.value = {
         clientId: props.report.clientId,
         title: props.report.title,
+        contributors: props.report.contributors || '',
         period: props.report.period || '',
         positives: props.report.positives?.length ? [...props.report.positives] : [''],
         negatives: props.report.negatives?.length ? [...props.report.negatives] : [''],
@@ -63,6 +65,7 @@ async function handleSubmit() {
     const payload = {
       clientId: form.value.clientId,
       title: form.value.title,
+      contributors: form.value.contributors.trim(),
       period: form.value.period,
       positives: form.value.positives.filter(Boolean),
       negatives: form.value.negatives.filter(Boolean),
@@ -116,6 +119,16 @@ async function handleSubmit() {
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Report Title</label>
             <input v-model="form.title" class="input-field" placeholder="Q1 Campaign Performance" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contributors / Collaboration</label>
+            <textarea
+              v-model="form.contributors"
+              rows="3"
+              class="input-field resize-none"
+              placeholder="Who collaborated on writing this report (e.g. account manager, creative team, client stakeholders)..."
+            />
           </div>
 
           <div>

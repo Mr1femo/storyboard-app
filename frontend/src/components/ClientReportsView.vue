@@ -90,6 +90,13 @@ defineExpose({ reload: loadReports });
           </div>
         </div>
 
+        <p
+          v-if="report.contributors"
+          class="mb-5 text-sm text-gray-700 leading-relaxed whitespace-pre-line px-4 py-3 bg-gray-50 border border-gray-100 rounded-lg"
+        >
+          {{ report.contributors }}
+        </p>
+
         <div class="mb-5">
           <h4 class="text-sm font-bold text-green-800 uppercase tracking-wider mb-3 flex items-center gap-2">
             <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

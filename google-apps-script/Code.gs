@@ -187,11 +187,12 @@ function initializeDatabase() {
   ]);
 
   ensureSheet(ss, CONFIG.SHEETS.REPORTS, [
-    'reportId', 'clientId', 'title', 'period', 'positives', 'negatives', 'createdAt',
+    'reportId', 'clientId', 'title', 'period', 'contributors', 'positives', 'negatives', 'createdAt',
   ]);
 
   seedDefaultAdmin();
   repairContentMasterSchema();
+  repairReportsSchema();
   Logger.log('Database initialized successfully.');
 }
 
@@ -255,6 +256,29 @@ function ensureContentMasterSchema() {
     repairContentMasterSchema();
   } catch (err) {
     Logger.log('ensureContentMasterSchema: ' + err.message);
+  }
+}
+
+function repairReportsSchema() {
+  const sheet = getSheet(CONFIG.SHEETS.REPORTS);
+  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+    .map(function (h) { return String(h || ''); });
+  if (headers.indexOf('contributors') !== -1) return;
+
+  const periodIdx = headers.indexOf('period');
+  if (periodIdx !== -1) {
+    sheet.insertColumnAfter(periodIdx + 1);
+    sheet.getRange(1, periodIdx + 2).setValue('contributors');
+  } else {
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('contributors');
+  }
+}
+
+function ensureReportsSchema() {
+  try {
+    repairReportsSchema();
+  } catch (err) {
+    Logger.log('ensureReportsSchema: ' + err.message);
   }
 }
 
@@ -715,6 +739,7 @@ function getStoryboardDetails(contentId, auth) {
 }
 
 function getReports(auth, filterClientId) {
+  ensureReportsSchema();
   const sheet = getSheet(CONFIG.SHEETS.REPORTS);
   let rows = sheetToObjects(sheet, 'reportId');
 
@@ -730,6 +755,7 @@ function getReports(auth, filterClientId) {
       clientId: r.clientId,
       title: r.title,
       period: r.period,
+      contributors: r.contributors || '',
       positives: parseCommaList(r.positives),
       negatives: parseCommaList(r.negatives),
       createdAt: r.createdAt,
@@ -940,6 +966,7 @@ function createReport(payload) {
     throw new Error('clientId and title are required');
   }
 
+  ensureReportsSchema();
   const reportId = generateId('RPT');
   const sheet = getSheet(CONFIG.SHEETS.REPORTS);
   sheet.appendRow([
@@ -947,6 +974,7 @@ function createReport(payload) {
     payload.clientId,
     payload.title,
     payload.period || '',
+    payload.contributors || '',
     arrayToCommaList(payload.positives),
     arrayToCommaList(payload.negatives),
     new Date().toISOString(),
@@ -961,6 +989,7 @@ function updateReport(payload) {
     throw new Error('clientId and title are required');
   }
 
+  ensureReportsSchema();
   const sheet = getSheet(CONFIG.SHEETS.REPORTS);
   const rowIndex = findRowIndex(sheet, 'reportId', payload.reportId);
   if (rowIndex === -1) throw new Error('Report not found');
@@ -970,6 +999,7 @@ function updateReport(payload) {
     clientId: payload.clientId,
     title: payload.title,
     period: payload.period || '',
+    contributors: payload.contributors || '',
     positives: arrayToCommaList(payload.positives),
     negatives: arrayToCommaList(payload.negatives),
   };
